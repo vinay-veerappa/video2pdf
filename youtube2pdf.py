@@ -22,6 +22,12 @@ from skimage.metrics import structural_similarity as ssim
 import browser_cookie3
 import tempfile
 import base64
+try:
+    from youtube_transcript_api import YouTubeTranscriptApi
+    from youtube_transcript_api.formatters import TextFormatter
+    YOUTUBE_TRANSCRIPT_API_AVAILABLE = True
+except ImportError:
+    YOUTUBE_TRANSCRIPT_API_AVAILABLE = False
 
 # Constants
 OUTPUT_DIR = "./output"
@@ -197,17 +203,60 @@ def get_video_title(url):
 
 
 def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False, cookies_path=None):
-    """Download transcript/subtitles from YouTube video using yt-dlp"""
+    """Download transcript/subtitles from YouTube video using youtube-transcript-api (fast) or yt-dlp (fallback)"""
     print(f"\nDownloading transcript from YouTube video...")
     
+    # Extract video ID
+    video_id = None
+    if 'watch?v=' in url:
+        video_id = url.split('watch?v=')[1].split('&')[0].split('?')[0]
+    elif 'youtu.be/' in url:
+        video_id = url.split('youtu.be/')[1].split('?')[0].split('&')[0]
+    
+    txt_path = os.path.join(output_folder, "transcript.txt")
+    
+    # Method 1: Try youtube-transcript-api (Faster, cleaner)
+    if YOUTUBE_TRANSCRIPT_API_AVAILABLE and video_id:
+        try:
+            print("Attempting download with youtube-transcript-api...")
+            # Instantiate API
+            api = YouTubeTranscriptApi()
+            
+            # Get transcript list
+            transcript_list = api.list(video_id)
+            
+            # Find transcript (prefer manual 'en', then auto 'en')
+            transcript = None
+            try:
+                # Try manual English first
+                transcript = transcript_list.find_manually_created_transcript(['en'])
+            except:
+                try:
+                    # Try generated English
+                    transcript = transcript_list.find_generated_transcript(['en'])
+                except:
+                    # Try any English
+                    transcript = transcript_list.find_transcript(['en'])
+            
+            if transcript:
+                # Fetch and format
+                transcript_data = transcript.fetch()
+                formatter = TextFormatter()
+                formatted_text = formatter.format_transcript(transcript_data)
+                
+                # Save raw text
+                with open(txt_path, 'w', encoding='utf-8') as f:
+                    f.write(formatted_text)
+                
+                print(f"Transcript downloaded successfully: {txt_path}")
+                return None, txt_path
+                
+        except Exception as e:
+            print(f"youtube-transcript-api failed: {e}")
+            print("Falling back to yt-dlp...")
+
+    # Method 2: Fallback to yt-dlp
     try:
-        # Extract video ID from URL to get single video
-        video_id = None
-        if 'watch?v=' in url:
-            video_id = url.split('watch?v=')[1].split('&')[0].split('?')[0]
-        elif 'youtu.be/' in url:
-            video_id = url.split('youtu.be/')[1].split('?')[0].split('&')[0]
-        
         # Use video ID directly if we can extract it
         if video_id:
             url = f"https://www.youtube.com/watch?v={video_id}"
