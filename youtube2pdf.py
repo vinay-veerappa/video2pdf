@@ -1160,35 +1160,119 @@ def parse_image_timestamp(filename, return_minutes=False):
     return None
 
 
-def clean_transcript_text(text):
-    """Clean and improve transcript text with basic formatting and duplicate removal"""
+def clean_transcript_text(text_or_lines):
+    """Clean and improve transcript text with advanced duplicate removal for overlapping captions"""
     try:
-        # Basic cleanup first
-        text = re.sub(r'\s+', ' ', text)  # Multiple spaces
-        text = text.replace('>>', '')  # Remove chat markers
-        text = text.replace('[laughter]', '')
-        text = text.replace('[music]', '')
-        text = text.replace('[applause]', '')
-        text = text.strip()
+        # If input is a single string, split it, otherwise assume it's a list of lines
+        if isinstance(text_or_lines, str):
+            lines = text_or_lines.split('\n')
+        else:
+            lines = text_or_lines
+
+        cleaned_lines = []
+        prev_line = ""
         
-        # Split into sentences (more lenient)
-        sentences = re.split(r'[.!?]+\s+', text)
-        cleaned_sentences = []
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Remove timestamp if present at start of line
+            line = re.sub(r'^\[\d{2}:\d{2}:\d{2}\]\s*', '', line)
+            
+            # Basic cleanup
+            line = re.sub(r'\s+', ' ', line)
+            line = line.replace('>>', '')
+            line = line.replace('[laughter]', '')
+            line = line.replace('[music]', '')
+            line = line.replace('[applause]', '')
+            line = line.strip()
+            
+            if not line:
+                continue
+
+            # Check for overlap with previous line
+            # Many VTT/SRT files repeat the end of the previous line in the new line
+            # Example:
+            # Line 1: "Hello world this is"
+            # Line 2: "world this is a test"
+            
+            # If the new line starts with the end of the previous line
+            overlap_found = False
+            
+            # Check for exact subset
+            if line in prev_line:
+                continue # Skip completely redundant lines
+                
+            if prev_line in line:
+                # If previous line is fully contained in current line, prefer current line
+                # But we've already added prev_line. 
+                # In a streaming context we might replace, but here we append.
+                # Let's just keep the new content.
+                if len(cleaned_lines) > 0:
+                    cleaned_lines.pop()
+                cleaned_lines.append(line)
+                prev_line = line
+                continue
+
+            # Check for partial overlap (suffix of prev == prefix of curr)
+            # We check from largest possible overlap down to a minimum threshold
+            min_overlap = 10 # Minimum characters to consider an overlap
+            max_check = min(len(prev_line), len(line))
+            
+            best_overlap = 0
+            for i in range(max_check, min_overlap - 1, -1):
+                suffix = prev_line[-i:]
+                prefix = line[:i]
+                if suffix == prefix:
+                    best_overlap = i
+                    break
+            
+            if best_overlap > 0:
+                # Append only the new part
+                new_part = line[best_overlap:].strip()
+                if new_part:
+                    cleaned_lines.append(new_part)
+                    prev_line = line # Update prev_line to the FULL current line for next comparison
+            else:
+                # No overlap, just append
+                cleaned_lines.append(line)
+                prev_line = line
+
+        # Join all parts
+        full_text = ' '.join(cleaned_lines)
+        
+        # Now perform sentence splitting and paragraphing on the cleaner text
+        sentences = re.split(r'([.!?]+)\s+', full_text)
+        
+        # Reconstruct sentences (split keeps delimiters)
+        final_sentences = []
+        current_sent = ""
+        for part in sentences:
+            if re.match(r'[.!?]+', part):
+                current_sent += part
+                final_sentences.append(current_sent.strip())
+                current_sent = ""
+            else:
+                current_sent += part
+        if current_sent:
+            final_sentences.append(current_sent.strip())
+
+        # Post-processing sentences
+        processed_sentences = []
         seen_sentences = set()
         
-        for sentence in sentences:
-            if not sentence.strip() or len(sentence.strip()) < 5:
+        for sentence in final_sentences:
+            if not sentence or len(sentence) < 2:
                 continue
-            
-            sentence = sentence.strip()
-            
+                
             # Remove duplicates (case-insensitive)
             sentence_lower = sentence.lower()
             if sentence_lower in seen_sentences:
                 continue
             seen_sentences.add(sentence_lower)
             
-            # Basic fixes for common transcript errors
+            # Basic fixes
             sentence = sentence.replace(' cuz ', ' because ')
             sentence = sentence.replace(' u ', ' you ')
             sentence = sentence.replace(' ur ', ' your ')
@@ -1199,41 +1283,32 @@ def clean_transcript_text(text):
             sentence = sentence.replace(' its ', ' it\'s ')
             sentence = sentence.replace(' thats ', ' that\'s ')
             
-            # Capitalize first letter
+            # Capitalize
             if sentence and not sentence[0].isupper():
-                sentence = sentence[0].upper() + sentence[1:] if len(sentence) > 1 else sentence.upper()
+                sentence = sentence[0].upper() + sentence[1:]
+                
+            processed_sentences.append(sentence)
             
-            cleaned_sentences.append(sentence)
-        
-        # Group into paragraphs (2-4 sentences per paragraph)
+        # Group into paragraphs
         paragraphs = []
         current_paragraph = []
         
-        for sentence in cleaned_sentences:
+        for sentence in processed_sentences:
             current_paragraph.append(sentence)
-            # Start new paragraph after 3-4 sentences or if sentence is very long
             if len(current_paragraph) >= 4 or len(sentence) > 200:
-                paragraph_text = ' '.join(current_paragraph)
-                if not paragraph_text.endswith('.'):
-                    paragraph_text += '.'
-                paragraphs.append(paragraph_text)
+                paragraphs.append(' '.join(current_paragraph))
                 current_paragraph = []
         
         if current_paragraph:
-            paragraph_text = ' '.join(current_paragraph)
-            if not paragraph_text.endswith('.'):
-                paragraph_text += '.'
-            paragraphs.append(paragraph_text)
-        
+            paragraphs.append(' '.join(current_paragraph))
+            
         return '\n\n'.join(paragraphs)
+
     except Exception as e:
         print(f"Warning: Error cleaning transcript: {e}")
-        # Fallback: just basic cleanup
-        text = re.sub(r'\s+', ' ', text)
-        text = text.replace('>>', '')
-        text = text.replace('[laughter]', '')
-        text = text.replace('[music]', '')
-        text = text.replace('[applause]', '')
+        if isinstance(text_or_lines, list):
+            return ' '.join(text_or_lines)
+        return str(text_or_lines)
         return text
 
 
@@ -1327,8 +1402,8 @@ def create_markdown_report(images_folder, transcript_file, output_folder, video_
                 
                 # Write Transcript
                 if slide_transcript:
-                    combined_text = ' '.join(slide_transcript)
-                    cleaned_text = clean_transcript_text(combined_text)
+                    # Pass list of lines directly to the new cleaning function
+                    cleaned_text = clean_transcript_text(slide_transcript)
                     f.write("### Transcript\n\n")
                     f.write(f"{cleaned_text}\n\n")
                 else:
