@@ -254,17 +254,37 @@ def analyze_images_comprehensive(images_folder, similarity_threshold=0.95, outpu
     checked_pairs = 0
     similarity_matrix = {}  # Store all similarities
     
+    # Pre-calculate hashes for all images to speed up comparison
+    print("  Pre-calculating image hashes...")
+    from similarity import dhash, calculate_hamming_distance
+    image_hashes = {}
+    for idx, (timestamp, path, filename) in enumerate(image_data):
+        try:
+            img = cv2.imread(path)
+            if img is not None:
+                image_hashes[filename] = dhash(img)
+        except Exception:
+            pass
+            
     # First, calculate similarities for all pairs (within reasonable time window)
     for i in range(len(image_data)):
         filename1 = image_data[i][2]
         path1 = image_data[i][1]
         time1 = image_data[i][0]
+        hash1 = image_hashes.get(filename1)
+        
+        if hash1 is None:
+            continue
         
         # Compare with subsequent images (extend window to catch all duplicates)
         for j in range(i + 1, len(image_data)):
             filename2 = image_data[j][2]
             path2 = image_data[j][1]
             time2 = image_data[j][0]
+            hash2 = image_hashes.get(filename2)
+            
+            if hash2 is None:
+                continue
             
             time_diff_seconds = (time2 - time1) * 60
             
@@ -273,9 +293,17 @@ def analyze_images_comprehensive(images_folder, similarity_threshold=0.95, outpu
                 continue
             
             checked_pairs += 1
-            if checked_pairs % 20 == 0:
+            if checked_pairs % 100 == 0:
                 print(f"  Checked {checked_pairs} pairs...", end='\r')
             
+            # Fast filter: Check Hamming distance first
+            # If hashes are very different, images are definitely different
+            # 10 bits difference out of 64 is a safe threshold for "potentially similar"
+            dist = calculate_hamming_distance(hash1, hash2)
+            if dist > 10: 
+                continue
+                
+            # If hashes are similar, do the expensive SSIM check
             try:
                 img1 = cv2.imread(path1)
                 img2 = cv2.imread(path2)
@@ -295,6 +323,7 @@ def analyze_images_comprehensive(images_folder, similarity_threshold=0.95, outpu
                 pass
     
     print(f"\n  Checked {checked_pairs} image pairs")
+    print(f"  Found {len(similarity_matrix)} similar pairs")
     
     # Group duplicates using union-find approach
     # Create groups for all similar pairs
