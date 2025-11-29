@@ -1311,14 +1311,39 @@ def clean_transcript_text(text_or_lines):
         processed_sentences = []
         seen_sentences = set()
         
+        # Common filler phrases to remove
+        junk_patterns = [
+            r'^(um|uh|ah|like|so|you know|i mean)\W*$', # Just filler
+            r'^can you (hear|see) me\??$',
+            r'^type \d in the chat',
+            r'^let me know if',
+            r'^sound check',
+            r'^mic check',
+            r'^alright guys',
+            r'^welcome back',
+            r'^hit the like button',
+            r'^subscribe',
+            r'^check the link',
+        ]
+        
         for sentence in final_sentences:
-            if not sentence or len(sentence) < 2:
+            if not sentence or len(sentence) < 3: # Remove very short noise
                 continue
                 
             # Remove duplicates (case-insensitive)
             sentence_lower = sentence.lower()
             if sentence_lower in seen_sentences:
                 continue
+            
+            # Check for junk patterns
+            is_junk = False
+            for pattern in junk_patterns:
+                if re.search(pattern, sentence_lower):
+                    is_junk = True
+                    break
+            if is_junk:
+                continue
+                
             seen_sentences.add(sentence_lower)
             
             # Basic fixes
@@ -1331,6 +1356,9 @@ def clean_transcript_text(text_or_lines):
             sentence = sentence.replace(' wont ', ' won\'t ')
             sentence = sentence.replace(' its ', ' it\'s ')
             sentence = sentence.replace(' thats ', ' that\'s ')
+            
+            # Remove filler words at start of sentence
+            sentence = re.sub(r'^(Um|Uh|Ah|Like|So|You know),?\s+', '', sentence, flags=re.IGNORECASE)
             
             # Capitalize
             if sentence and not sentence[0].isupper():
