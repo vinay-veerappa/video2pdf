@@ -5,56 +5,65 @@ import glob
 import argparse
 from PIL import Image
 
-def get_content_bbox(img, threshold=30):
+def get_content_bbox(img, threshold_ratio=0.1):
     """
-    Find the bounding box of the content, ignoring dark borders.
+    Find crop coordinates using projection profiles (row/col variance).
     Returns (x, y, w, h)
     """
-    # Convert to grayscale
     if len(img.shape) == 3:
         gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     else:
         gray = img
 
-    # Threshold to find non-black regions
-    _, thresh = cv2.threshold(gray, threshold, 255, cv2.THRESH_BINARY)
-
-    # Find contours
-    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-    if not contours:
+    # Calculate variance along rows and columns using Sobel
+    sobelx = cv2.Sobel(gray, cv2.CV_64F, 1, 0, ksize=3)
+    sobely = cv2.Sobel(gray, cv2.CV_64F, 0, 1, ksize=3)
+    magnitude = np.sqrt(sobelx**2 + sobely**2)
+    
+    # Project onto axes
+    row_projection = np.sum(magnitude, axis=1)
+    col_projection = np.sum(magnitude, axis=0)
+    
+    # Normalize
+    row_max = np.max(row_projection)
+    col_max = np.max(col_projection)
+    
+    if row_max == 0 or col_max == 0:
         return 0, 0, img.shape[1], img.shape[0]
-
-    # Find the bounding box of all contours combined
-    x_min, y_min = img.shape[1], img.shape[0]
-    x_max, y_max = 0, 0
-
-    found_content = False
-    for cnt in contours:
-        x, y, w, h = cv2.boundingRect(cnt)
-        # Filter out very small noise
-        if w * h > 100: 
-            found_content = True
-            x_min = min(x_min, x)
-            y_min = min(y_min, y)
-            x_max = max(x_max, x + w)
-            y_max = max(y_max, y + h)
-
-    if not found_content:
+        
+    row_projection = row_projection / row_max
+    col_projection = col_projection / col_max
+    
+    # Threshold
+    active_rows = np.where(row_projection > threshold_ratio)[0]
+    active_cols = np.where(col_projection > threshold_ratio)[0]
+    
+    if len(active_rows) == 0 or len(active_cols) == 0:
         return 0, 0, img.shape[1], img.shape[0]
-
-    # Add a small padding
-    padding = 10
-    x_min = max(0, x_min - padding)
-    y_min = max(0, y_min - padding)
-    x_max = min(img.shape[1], x_max + padding)
-    y_max = min(img.shape[0], y_max + padding)
-
+        
+    y_min, y_max = active_rows[0], active_rows[-1]
+    x_min, x_max = active_cols[0], active_cols[-1]
+    
+    # Refinement: Move inwards to avoid border edges
+    h, w = img.shape[:2]
+    margin_x = int(w * 0.01)
+    margin_y = int(h * 0.01)
+    
+    x_min = min(x_min + margin_x, w)
+    y_min = min(y_min + margin_y, h)
+    x_max = max(x_max - margin_x, 0)
+    y_max = max(y_max - margin_y, 0)
+    
+    # Ensure valid coordinates
+    if x_max <= x_min or y_max <= y_min:
+        return 0, 0, w, h
+        
     return x_min, y_min, x_max - x_min, y_max - y_min
 
 def process_images(input_dir, output_dir=None, crop=False, compress=False, format='png'):
     """
     Process images: crop borders and/or compress.
+    Uses a two-pass approach for cropping to ensure consistent slide sizes.
     """
     if output_dir is None:
         output_dir = os.path.join(input_dir, "optimized")
@@ -64,6 +73,30 @@ def process_images(input_dir, output_dir=None, crop=False, compress=False, forma
     image_files = sorted(glob.glob(os.path.join(input_dir, "*.png")))
     print(f"Found {len(image_files)} images in {input_dir}")
     
+    # Pass 1: Calculate crop coordinates
+    crop_boxes = []
+    if crop:
+        print("Analyzing crop boundaries...")
+        for i, img_path in enumerate(image_files):
+            img = cv2.imread(img_path)
+            if img is None: continue
+            
+            box = get_content_bbox(img)
+            crop_boxes.append(box)
+            
+        # Calculate median crop box for consistency
+        if crop_boxes:
+            boxes = np.array(crop_boxes)
+            # Use median to ignore outliers (like vis_002)
+            median_x = int(np.median(boxes[:, 0]))
+            median_y = int(np.median(boxes[:, 1]))
+            median_w = int(np.median(boxes[:, 2]))
+            median_h = int(np.median(boxes[:, 3]))
+            
+            final_crop = (median_x, median_y, median_w, median_h)
+            print(f"Calculated consistent crop: {final_crop}")
+    
+    # Pass 2: Apply processing
     for i, img_path in enumerate(image_files):
         filename = os.path.basename(img_path)
         print(f"Processing {filename} ({i+1}/{len(image_files)})...", end='\r')
@@ -74,13 +107,16 @@ def process_images(input_dir, output_dir=None, crop=False, compress=False, forma
             continue
             
         # Crop if requested
-        if crop:
-            x, y, w, h = get_content_bbox(img)
-            # Only crop if we are removing a significant amount (e.g. > 5% of area)
-            original_area = img.shape[0] * img.shape[1]
-            new_area = w * h
-            if new_area < original_area * 0.95:
-                img = img[y:y+h, x:x+w]
+        if crop and crop_boxes:
+            x, y, w, h = final_crop
+            # Ensure crop is within bounds for this specific image
+            h_img, w_img = img.shape[:2]
+            x = max(0, min(x, w_img))
+            y = max(0, min(y, h_img))
+            w = max(1, min(w, w_img - x))
+            h = max(1, min(h, h_img - y))
+            
+            img = img[y:y+h, x:x+w]
         
         # Save/Compress
         output_path = os.path.join(output_dir, os.path.splitext(filename)[0] + '.' + format)

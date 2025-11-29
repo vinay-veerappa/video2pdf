@@ -105,3 +105,38 @@ def dhash(image, hash_size=8):
 def calculate_hamming_distance(hash1, hash2):
     """Calculate Hamming distance between two hashes"""
     return bin(int(hash1) ^ int(hash2)).count('1')
+
+def grid_ssim(img1, img2, grid_size=(4, 4), threshold=0.95, min_matching_cells=0.8):
+    """
+    Compare images using a grid-based SSIM.
+    Returns True if images are duplicates.
+    """
+    # Resize to same size
+    img2 = cv2.resize(img2, (img1.shape[1], img1.shape[0]))
+    
+    # Convert to grayscale
+    g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    
+    h, w = g1.shape
+    rows, cols = grid_size
+    cell_h = h // rows
+    cell_w = w // cols
+    
+    matching_cells = 0
+    total_cells = rows * cols
+    
+    for r in range(rows):
+        for c in range(cols):
+            y1, y2 = r * cell_h, (r + 1) * cell_h
+            x1, x2 = c * cell_w, (c + 1) * cell_w
+            
+            cell1 = g1[y1:y2, x1:x2]
+            cell2 = g2[y1:y2, x1:x2]
+            
+            score = ssim(cell1, cell2, data_range=255)
+            if score > threshold:
+                matching_cells += 1
+                
+    match_ratio = matching_cells / total_cells
+    return match_ratio >= min_matching_cells, match_ratio
