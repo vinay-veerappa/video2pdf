@@ -29,6 +29,13 @@ try:
 except ImportError:
     YOUTUBE_TRANSCRIPT_API_AVAILABLE = False
 
+try:
+    from imagededup.methods import PHash, CNN
+    from sklearn.metrics.pairwise import cosine_similarity
+    IMAGEDEDUP_AVAILABLE = True
+except ImportError:
+    IMAGEDEDUP_AVAILABLE = False
+
 # Constants
 OUTPUT_DIR = "./output"
 FRAME_RATE = 6  # frames per second to process
@@ -481,19 +488,82 @@ def get_frames(video_path, frame_rate):
     vs.release()
 
 
-def calculate_similarity(img1, img2):
-    """Calculate structural similarity between two images"""
-    # Resize images to same size for comparison
-    img1_resized = cv2.resize(img1, (300, 200))
-    img2_resized = cv2.resize(img2, (300, 200))
-    
-    # Convert to grayscale
-    gray1 = cv2.cvtColor(img1_resized, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(img2_resized, cv2.COLOR_BGR2GRAY)
-    
-    # Calculate SSIM (data_range=255 for uint8 images)
-    similarity = ssim(gray1, gray2, data_range=255)
-    return similarity
+# Global instances for caching
+_phasher_instance = None
+_cnn_instance = None
+
+def get_phasher():
+    global _phasher_instance
+    if _phasher_instance is None and IMAGEDEDUP_AVAILABLE:
+        _phasher_instance = PHash()
+    return _phasher_instance
+
+def get_cnn():
+    global _cnn_instance
+    if _cnn_instance is None and IMAGEDEDUP_AVAILABLE:
+        _cnn_instance = CNN()
+    return _cnn_instance
+
+def calculate_similarity(img1, img2, method='ssim'):
+    """
+    Calculate similarity between two images using specified method.
+    Methods: 'ssim' (default), 'phash', 'cnn'
+    """
+    if method == 'ssim':
+        # Center Crop SSIM (10%)
+        h, w = img1.shape[:2]
+        crop_h = int(h * 0.1)
+        crop_w = int(w * 0.1)
+        
+        if h > 20 and w > 20:
+            img1 = img1[crop_h:h-crop_h, crop_w:w-crop_w]
+            img2 = img2[crop_h:h-crop_h, crop_w:w-crop_w]
+        
+        img1_resized = cv2.resize(img1, (300, 200))
+        img2_resized = cv2.resize(img2, (300, 200))
+        gray1 = cv2.cvtColor(img1_resized, cv2.COLOR_BGR2GRAY)
+        gray2 = cv2.cvtColor(img2_resized, cv2.COLOR_BGR2GRAY)
+        return ssim(gray1, gray2, data_range=255)
+        
+    elif method == 'phash':
+        if not IMAGEDEDUP_AVAILABLE:
+            print("Warning: imagededup not installed, falling back to SSIM")
+            return calculate_similarity(img1, img2, 'ssim')
+            
+        phasher = get_phasher()
+        # PHash expects RGB usually, but works with BGR array
+        # encode_image accepts image_array
+        try:
+            h1 = phasher.encode_image(image_array=img1)
+            h2 = phasher.encode_image(image_array=img2)
+            dist = phasher.hamming_distance(h1, h2)
+            # Normalize distance to 0-1 similarity (0 dist = 1.0 sim)
+            # Max ham dist for 64-bit hash is 64
+            return 1.0 - (dist / 64.0)
+        except Exception as e:
+            print(f"PHash error: {e}")
+            return 0.0
+
+    elif method == 'cnn':
+        if not IMAGEDEDUP_AVAILABLE:
+            print("Warning: imagededup not installed, falling back to SSIM")
+            return calculate_similarity(img1, img2, 'ssim')
+            
+        cnn = get_cnn()
+        try:
+            emb1 = cnn.encode_image(image_array=img1)
+            emb2 = cnn.encode_image(image_array=img2)
+            
+            if isinstance(emb1, np.ndarray):
+                emb1 = emb1.reshape(1, -1)
+                emb2 = emb2.reshape(1, -1)
+            
+            return cosine_similarity(emb1, emb2)[0][0]
+        except Exception as e:
+            print(f"CNN error: {e}")
+            return 0.0
+            
+    return 0.0
 
 
 def dhash(image, hash_size=8):
@@ -520,7 +590,8 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
                               frame_rate, min_percent, max_percent,
                               use_similarity=True, similarity_threshold=0.95,
                               min_time_interval=MIN_TIME_BETWEEN_CAPTURES,
-                              save_duplicates_path=None):
+                              save_duplicates_path=None,
+                              similarity_method='ssim'):
     """Detect and save unique screenshots from video with improved duplicate detection"""
     # Calculate derived parameters
     warmup = frame_rate
@@ -578,7 +649,7 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
                 # Compare with last N frames
                 max_similarity = 0
                 for prev_frame in previous_frames:
-                    similarity = calculate_similarity(orig, prev_frame)
+                    similarity = calculate_similarity(orig, prev_frame, method=similarity_method)
                     if similarity and similarity > max_similarity:
                         max_similarity = similarity
                 
@@ -810,10 +881,10 @@ def analyze_image_content(img_path):
         return {"relevant": False, "reason": f"Analysis error: {e}", "type": "error"}
 
 
-def analyze_images_comprehensive(images_folder, similarity_threshold=0.95, output_folder=None, move_duplicates=False):
+def analyze_images_comprehensive(images_folder, similarity_threshold=0.95, output_folder=None, move_duplicates=False, similarity_method='ssim'):
     """Comprehensive analysis of images: duplicates, relevance, and generate report"""
     print("\n" + "="*60)
-    print("COMPREHENSIVE IMAGE ANALYSIS")
+    print(f"COMPREHENSIVE IMAGE ANALYSIS (Method: {similarity_method})")
     print("="*60)
     
     image_files = sorted(glob.glob(os.path.join(images_folder, "*.png")))
@@ -894,7 +965,7 @@ def analyze_images_comprehensive(images_folder, similarity_threshold=0.95, outpu
                 img1 = cv2.imread(path1)
                 img2 = cv2.imread(path2)
                 if img1 is not None and img2 is not None:
-                    similarity = calculate_similarity(img1, img2)
+                    similarity = calculate_similarity(img1, img2, method=similarity_method)
                     if similarity and similarity > similarity_threshold:
                         # Store similarity
                         key = tuple(sorted([filename1, filename2]))
@@ -1778,6 +1849,13 @@ Examples:
         action="store_true",
         help="Skip video download and image extraction, only run post-processing on existing images"
     )
+
+    parser.add_argument(
+        "--similarity-method", 
+        choices=['ssim', 'phash', 'cnn'], 
+        default='ssim', 
+        help="Method for duplicate detection (default: ssim)"
+    )
     
     args = parser.parse_args()
     
@@ -1864,7 +1942,8 @@ Examples:
                 use_similarity=not args.no_similarity,
                 similarity_threshold=similarity_threshold,
                 min_time_interval=args.min_time_interval,
-                save_duplicates_path=duplicates_folder
+                save_duplicates_path=duplicates_folder,
+                similarity_method=args.similarity_method
             )
         else:
             # Count existing images
@@ -1882,7 +1961,8 @@ Examples:
                 images_folder,
                 similarity_threshold=similarity_threshold,
                 output_folder=output_folder,
-                move_duplicates=args.save_duplicates
+                move_duplicates=args.save_duplicates,
+                similarity_method=args.similarity_method
             )
             if analysis_result:
                 print(f"\nAnalysis Summary:")
