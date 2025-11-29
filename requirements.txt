@@ -1,3 +1,8 @@
-imutils==0.5.4
-opencv_python==4.5.2.52
-img2pdf==0.4.1
+imutils>=0.5.4
+opencv-python>=4.5.0
+img2pdf>=0.4.1
+yt-dlp>=2023.12.30
+scikit-image>=0.21.0
+numpy>=1.24.0
+reportlab>=4.0.0
+pyspellchecker>=0.7.0
