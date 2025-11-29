@@ -18,10 +18,10 @@ import sys
 from pathlib import Path
 from urllib.parse import urlparse, parse_qs
 import numpy as np
-import numpy as np
 from skimage.metrics import structural_similarity as ssim
 import browser_cookie3
 import tempfile
+import base64
 
 # Constants
 OUTPUT_DIR = "./output"
@@ -1237,7 +1237,7 @@ def clean_transcript_text(text):
         return text
 
 
-def create_markdown_report(images_folder, transcript_file, output_folder, video_name):
+def create_markdown_report(images_folder, transcript_file, output_folder, video_name, embed_images=False):
     """Create a structured Markdown report for NotebookLM"""
     print("\nCreating Markdown report for NotebookLM...")
     
@@ -1309,10 +1309,21 @@ def create_markdown_report(images_folder, transcript_file, output_folder, video_
                 # Write Slide Section
                 f.write(f"## Slide {image_idx + 1} ({img_timestamp})\n\n")
                 
-                # Note: NotebookLM might not render local images, but having the reference helps context
-                # We use a relative path
-                rel_path = os.path.join("images", img_filename).replace("\\", "/")
-                f.write(f"![Slide {image_idx + 1}]({rel_path})\n\n")
+                if embed_images:
+                    # Embed image as base64
+                    try:
+                        with open(img_path, "rb") as img_f:
+                            encoded_string = base64.b64encode(img_f.read()).decode('utf-8')
+                        f.write(f"![Slide {image_idx + 1}](data:image/png;base64,{encoded_string})\n\n")
+                    except Exception as e:
+                        print(f"Warning: Could not embed image {img_filename}: {e}")
+                        rel_path = os.path.join("images", img_filename).replace("\\", "/")
+                        f.write(f"![Slide {image_idx + 1}]({rel_path})\n\n")
+                else:
+                    # Note: NotebookLM might not render local images, but having the reference helps context
+                    # We use a relative path
+                    rel_path = os.path.join("images", img_filename).replace("\\", "/")
+                    f.write(f"![Slide {image_idx + 1}]({rel_path})\n\n")
                 
                 # Write Transcript
                 if slide_transcript:
@@ -1574,6 +1585,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--embed-images",
+        action="store_true",
+        help="Embed images as Base64 in the Markdown report (WARNING: Creates very large files)"
+    )
+    
+    parser.add_argument(
         "--clean-transcript",
         action="store_true",
         help="Create a cleaned transcript file with paragraphs and spell checking"
@@ -1604,6 +1621,12 @@ Examples:
         help="Path to cookies file (Netscape format) for YouTube authentication"
     )
     
+    parser.add_argument(
+        "--skip-extraction",
+        action="store_true",
+        help="Skip video download and image extraction, only run post-processing on existing images"
+    )
+    
     args = parser.parse_args()
     
     # Get parameters from arguments
@@ -1626,16 +1649,23 @@ Examples:
         if is_youtube:
             print("Detected YouTube URL")
             video_name = get_video_title(input_source)
-            video_path = download_youtube_video(input_source, output_dir, cookies_path=args.cookies)
+            if not args.skip_extraction:
+                video_path = download_youtube_video(input_source, output_dir, cookies_path=args.cookies)
+            else:
+                print("Skipping video download (--skip-extraction)")
         else:
             print("Detected local video file")
-            if not os.path.exists(input_source):
-                raise FileNotFoundError(f"Video file not found: {input_source}")
-            video_path = input_source
             video_name = Path(input_source).stem
+            if not args.skip_extraction:
+                if not os.path.exists(input_source):
+                    raise FileNotFoundError(f"Video file not found: {input_source}")
+                video_path = input_source
+            else:
+                print("Skipping video check (--skip-extraction)")
         
         print(f"\nProcessing video: {video_name}")
-        print(f"Video path: {video_path}\n")
+        if video_path:
+            print(f"Video path: {video_path}\n")
         
         # Initialize output folders
         output_folder, images_folder = initialize_output_folder(video_name, output_dir)
@@ -1650,7 +1680,7 @@ Examples:
         # Download transcript if requested and it's a YouTube URL
         transcript_vtt = None
         transcript_txt = None
-        if args.download_transcript and is_youtube:
+        if args.download_transcript and is_youtube and not args.skip_extraction:
             transcript_vtt, transcript_txt = download_youtube_transcript(
                 input_source,
                 output_folder,
@@ -1661,21 +1691,37 @@ Examples:
         elif args.download_transcript and not is_youtube:
             print("Warning: Transcript download is only available for YouTube URLs. Skipping transcript download.")
         
+        # If we skipped download or didn't request it, try to find existing transcript
+        if not transcript_txt:
+            possible_transcripts = glob.glob(os.path.join(output_folder, "*.txt"))
+            for t in possible_transcripts:
+                filename = os.path.basename(t)
+                if "cleaned" not in filename and "report" not in filename and "info" not in filename:
+                    transcript_txt = t
+                    print(f"Found existing transcript: {transcript_txt}")
+                    break
+
         # Detect unique screenshots
-        screenshots_count = detect_unique_screenshots(
-            video_path,
-            images_folder,
-            frame_rate=frame_rate,
-            min_percent=min_percent,
-            max_percent=max_percent,
-            use_similarity=not args.no_similarity,
-            similarity_threshold=similarity_threshold,
-            min_time_interval=args.min_time_interval,
-            save_duplicates_path=duplicates_folder
-        )
+        if not args.skip_extraction:
+            screenshots_count = detect_unique_screenshots(
+                video_path,
+                images_folder,
+                frame_rate=frame_rate,
+                min_percent=min_percent,
+                max_percent=max_percent,
+                use_similarity=not args.no_similarity,
+                similarity_threshold=similarity_threshold,
+                min_time_interval=args.min_time_interval,
+                save_duplicates_path=duplicates_folder
+            )
+        else:
+            # Count existing images
+            existing_images = glob.glob(os.path.join(images_folder, "*.png"))
+            screenshots_count = len(existing_images)
+            print(f"Skipping extraction. Found {screenshots_count} existing images.")
         
         if screenshots_count == 0:
-            print("No screenshots were captured. Exiting.")
+            print("No screenshots were captured (or found). Exiting.")
             return
         
         # Analyze images if requested
@@ -1731,7 +1777,8 @@ Examples:
                 images_folder,
                 transcript_txt,
                 output_folder,
-                video_name
+                video_name,
+                embed_images=args.embed_images
             )
         elif args.create_markdown and not transcript_txt:
             print("Warning: Cannot create Markdown report without transcript.")
