@@ -33,19 +33,42 @@ def create_optimized_pdf_with_transcript(images_dir, transcript_file, output_pdf
     
     # Parse transcript
     transcript_entries = []
+    plain_text_transcript = None
+    
     if transcript_file and os.path.exists(transcript_file):
-        with open(transcript_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line:
-                    continue
-                # Extract timestamp and text: [00:00:01] text
-                match = re.match(r'\[(\d{2}:\d{2}:\d{2})\]\s*(.+)', line)
-                if match:
-                    timestamp = match.group(1)
-                    text = match.group(2)
-                    transcript_entries.append((timestamp, text))
-        print(f"Loaded {len(transcript_entries)} transcript entries")
+        # Try different encodings
+        for encoding in ['utf-8', 'utf-16', 'latin-1', 'cp1252']:
+            try:
+                with open(transcript_file, 'r', encoding=encoding) as f:
+                    content = f.read()
+                    
+                    # Check if it has timestamp format [HH:MM:SS]
+                    lines = content.split('\n')
+                    has_timestamps = False
+                    for line in lines:
+                        line = line.strip()
+                        if not line:
+                            continue
+                        # Extract timestamp and text: [00:00:01] text
+                        match = re.match(r'\[(\d{2}:\d{2}:\d{2})\]\s*(.+)', line)
+                        if match:
+                            has_timestamps = True
+                            timestamp = match.group(1)
+                            text = match.group(2)
+                            transcript_entries.append((timestamp, text))
+                    
+                    if has_timestamps:
+                        print(f"Loaded {len(transcript_entries)} transcript entries with timestamps (encoding: {encoding})")
+                    else:
+                        # Plain text transcript without timestamps
+                        plain_text_transcript = content.strip()
+                        print(f"Loaded plain text transcript ({len(plain_text_transcript)} characters, encoding: {encoding})")
+                    break
+            except (UnicodeDecodeError, UnicodeError):
+                continue
+        
+        if not transcript_entries and not plain_text_transcript:
+            print("Warning: Could not read transcript file with any encoding")
     
     # Create PDF
     doc = SimpleDocTemplate(output_pdf, pagesize=letter)
@@ -109,7 +132,24 @@ def create_optimized_pdf_with_transcript(images_dir, transcript_file, output_pdf
                 print(f"\nWarning: Could not add image {filename}: {e}")
             
             # Find matching transcript
-            if img_timestamp and transcript_entries:
+            if plain_text_transcript:
+                # For plain text, add a portion of the transcript to each slide
+                # Distribute evenly across all slides
+                chars_per_slide = len(plain_text_transcript) // len(image_files)
+                start_char = i * chars_per_slide
+                end_char = start_char + chars_per_slide if i < len(image_files) - 1 else len(plain_text_transcript)
+                
+                slide_text = plain_text_transcript[start_char:end_char].strip()
+                if slide_text:
+                    story.append(Paragraph(f"<b>Transcript (Slide {i+1}):</b>", timestamp_style))
+                    story.append(Spacer(1, 0.05*inch))
+                    # Clean and add
+                    cleaned_text = clean_transcript_text([slide_text])
+                    if cleaned_text:
+                        story.append(Paragraph(cleaned_text.replace('\n', '<br/>'), text_style))
+                        story.append(Spacer(1, 0.2*inch))
+            
+            elif img_timestamp and transcript_entries:
                 img_seconds = timestamp_to_seconds(img_timestamp)
                 
                 # Find next slide timestamp to define range

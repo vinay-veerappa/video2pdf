@@ -31,10 +31,10 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
         try:
             print("Attempting download with youtube-transcript-api...")
             # Instantiate API
-            api = YouTubeTranscriptApi()
+            ytt_api = YouTubeTranscriptApi()
             
             # Get transcript list
-            transcript_list = api.list(video_id)
+            transcript_list = ytt_api.list(video_id)
             
             # Find transcript (prefer manual 'en', then auto 'en')
             transcript = None
@@ -50,16 +50,32 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
                     transcript = transcript_list.find_transcript(['en'])
             
             if transcript:
-                # Fetch and format
+                # Fetch transcript data
                 transcript_data = transcript.fetch()
-                formatter = TextFormatter()
-                formatted_text = formatter.format_transcript(transcript_data)
                 
-                # Save raw text
+                # Manually format with timestamps instead of using TextFormatter
+                # transcript_data is a FetchedTranscript containing FetchedTranscriptSnippet objects
+                formatted_lines = []
+                for entry in transcript_data:
+                    # Access attributes (not dictionary keys)
+                    # Convert start time (in seconds) to HH:MM:SS format
+                    start_seconds = int(entry.start)
+                    hours = start_seconds // 3600
+                    minutes = (start_seconds % 3600) // 60
+                    seconds = start_seconds % 60
+                    timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                    
+                    # Get text and clean it
+                    text = entry.text.strip()
+                    if text:
+                        formatted_lines.append(f"[{timestamp}] {text}")
+                
+                # Save with timestamps
                 with open(txt_path, 'w', encoding='utf-8') as f:
-                    f.write(formatted_text)
+                    f.write('\n'.join(formatted_lines))
                 
                 print(f"Transcript downloaded successfully: {txt_path}")
+                print(f"  - {len(formatted_lines)} entries with timestamps")
                 return None, txt_path
                 
         except Exception as e:
