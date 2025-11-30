@@ -133,3 +133,7 @@ dmypy.json
 output/
 *cookies.txt
 *.mp4
+
+# Generated documents
+*.docx
+*.pdf
