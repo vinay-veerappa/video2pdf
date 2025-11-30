@@ -254,11 +254,6 @@ def check_graphics_content(img, entropy=None, debug_path=None):
     Focuses on center region to avoid UI borders.
     Returns (has_graphics, score, reason)
     """
-    # Safety check: If entropy is extremely low (< 2.0), it's likely a blank screen
-    # with artifacts (like a player bar) that look like lines. Don't trust it.
-    if entropy is not None and entropy < 2.0:
-        return False, 0, f"Ignored lines due to low entropy ({entropy:.2f})"
-
     try:
         # Crop to center 60% (20% margins) to avoid border lines/UI
         w, h = img.size
@@ -284,6 +279,11 @@ def check_graphics_content(img, entropy=None, debug_path=None):
                 vis.save(debug_path)
             except Exception as e:
                 print(f"Failed to save debug crop: {e}")
+
+        # Safety check: If entropy is extremely low (< 2.0), it's likely a blank screen
+        # with artifacts (like a player bar) that look like lines. Don't trust it.
+        if entropy is not None and entropy < 2.0:
+            return False, 0, f"Ignored lines due to low entropy ({entropy:.2f})"
 
         # Convert PIL to OpenCV format
         img_np = np.array(crop.convert('RGB'))
@@ -336,9 +336,15 @@ def get_image_files(image_dir, exclude_folders=None):
     return image_files
 
 
-def find_blank_images(image_dir, content_threshold=25, save_report=True, debug=False):
-    """Find images with minimal content."""
+def find_blank_images(image_dir, content_threshold=25, debug=False):
+    """
+    Find blank or near-blank images in a directory.
+    Uses content analysis, OCR, and graphics detection.
+    """
     import time
+    
+    image_dir = Path(image_dir)
+    output_dir = image_dir.parent
     
     print(f"=== BLANK/MINIMAL IMAGE DETECTION ===")
     print(f"Content threshold: {content_threshold}")
@@ -425,6 +431,7 @@ def find_blank_images(image_dir, content_threshold=25, save_report=True, debug=F
                 
                 has_graphics, graph_score, graph_reason = check_graphics_content(img, metrics['entropy'], debug_crop_path)
                 image_data['graphics_info'] = graph_reason
+                image_data['debug_crop_path'] = str(debug_crop_path) if debug_crop_path else None
                 
                 if is_confirmed_blank:
                     if has_graphics:
@@ -475,16 +482,6 @@ def find_blank_images(image_dir, content_threshold=25, save_report=True, debug=F
             print(f"  {idx}. {img['name']}")
             print(f"     Score: {img['content_score']:.1f}, Indicators: {img['blank_score']}/6")
             print(f"     Entropy: {img['entropy']:.2f}, Variance(ctr): {img['variance_center']:.1f}")
-    
-    # Generate HTML report
-    if save_report and all_images:
-        report_path = Path(image_dir) / 'blank_images_report.html'
-        print(f"\nGenerating HTML report: {report_path}")
-        try:
-            create_blank_images_report(all_images, blank_images, report_path, content_threshold)
-            print(f"✓ Report saved ({report_path.stat().st_size:,} bytes)")
-        except Exception as e:
-            print(f"✗ Error: {e}")
     
     return blank_images, all_images
 
@@ -546,6 +543,14 @@ def create_blank_images_report(all_images, blank_images, output_path, threshold)
                 html.append(f'<p style="color:#2e7d32"><b>OCR Found:</b> {len(img["ocr_text"])} blocks (e.g. "{img["ocr_text"][0] if img["ocr_text"] else ""}")</p>')
             if img.get('graphics_info'):
                 html.append(f'<p style="color:#1976D2"><b>Graphics:</b> {img["graphics_info"]}</p>')
+            
+            # Debug Crop Visualization
+            if img.get('debug_crop_path') and os.path.exists(img['debug_crop_path']):
+                crop_b64 = img_to_base64(img['debug_crop_path'])
+                if crop_b64:
+                    html.append(f'<div style="margin-top:10px"><button class="btn" onclick="toggle(\'dc{i}\')">Show Graphics Debug</button>')
+                    html.append(f'<div id="dc{i}" class="hidden" style="margin-top:5px"><img src="{crop_b64}" style="max-width:100%; border:1px solid #ccc"></div></div>')
+
             if img.get('blank_reasons'):
                 html.append(f'<p><b>Why:</b> {"; ".join(img["blank_reasons"])}</p>')
             html.append('</div>')
@@ -944,9 +949,12 @@ if __name__ == "__main__":
     
     # Detect blank images
     if args.mode == 'detect-blank' or args.detect_blank_first:
-        blank_images, all_imgs = find_blank_images(IMAGE_DIR, args.content_threshold, True, args.debug)
+        blank_images, all_imgs = find_blank_images(IMAGE_DIR, args.content_threshold, args.debug)
         
         if args.mode == 'detect-blank':
+            # Generate report
+            report_path = IMAGE_DIR / "blank_images_report.html"
+            create_blank_images_report(all_imgs, blank_images, report_path, args.content_threshold)
             print("\nDone! Check 'blank_images_report.html'")
             sys.exit(0)
     
