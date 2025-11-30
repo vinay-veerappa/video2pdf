@@ -427,54 +427,63 @@ def keep_best_from_duplicates(duplicates, keep_strategy='first'):
     return recommendations
 
 
-def create_comparison_report(image_dir, output_html='comparison_report.html'):
+def create_duplicate_pairs_report(duplicates, output_dir, filename='duplicates_report.html'):
     """
-    Create an HTML report showing original vs cropped images side by side.
+    Create an HTML report showing detected duplicate pairs side-by-side.
     """
     html_parts = [
         '<html><head><style>',
-        'body { font-family: Arial; margin: 20px; }',
-        '.comparison { margin: 20px 0; border: 1px solid #ccc; padding: 10px; }',
-        'img { max-width: 45%; margin: 5px; border: 1px solid #999; }',
-        'h2 { color: #333; }',
+        'body { font-family: Arial; margin: 20px; background: #f5f5f5; }',
+        '.pair { background: white; margin: 20px 0; border: 1px solid #ddd; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
+        '.images { display: flex; justify-content: space-around; align-items: center; }',
+        '.image-container { text-align: center; width: 45%; }',
+        'img { max-width: 100%; height: auto; border: 1px solid #eee; }',
+        '.metrics { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 0.9em; }',
+        '.metric-bad { color: #d32f2f; font-weight: bold; }',
+        '.metric-good { color: #388e3c; font-weight: bold; }',
+        'h1 { color: #333; }',
+        'h3 { margin-top: 0; color: #555; }',
         '</style></head><body>',
-        '<h1>Video Conference Screenshot Crop Comparison</h1>'
+        f'<h1>Duplicate Pairs Report ({len(duplicates)} pairs)</h1>'
     ]
     
-    for img_path in sorted(Path(image_dir).rglob('*')):
-        # Skip output directories
-        if any(x in str(img_path) for x in ['crop_visualizations', 'cropped_for_comparison', 'report']):
-            continue
-
-        if img_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
-            img = Image.open(img_path)
+    # Sort duplicates by similarity (lower distance is better)
+    sorted_dups = sorted(duplicates, key=lambda x: x['avg_distance'])
+    
+    for i, dup in enumerate(sorted_dups, 1):
+        # Calculate relative path for images
+        try:
+            # Try to make paths relative to the report file
+            rel_path1 = os.path.relpath(dup['path1'], output_dir)
+            rel_path2 = os.path.relpath(dup['path2'], output_dir)
+        except ValueError:
+            # Fallback to absolute paths if on different drives
+            rel_path1 = Path(dup['path1']).as_uri()
+            rel_path2 = Path(dup['path2']).as_uri()
             
-            # Create cropped version
-            cropped = smart_crop_video_conference(img, method='auto')
-            
-            # Save both
-            orig_name = f"report_orig_{img_path.name}"
-            crop_name = f"report_crop_{img_path.name}"
-            
-            report_dir = Path(image_dir) / 'report'
-            report_dir.mkdir(exist_ok=True)
-            
-            img.save(report_dir / orig_name)
-            cropped.save(report_dir / crop_name)
-            
-            html_parts.append(f'<div class="comparison">')
-            html_parts.append(f'<h2>{img_path.name}</h2>')
-            html_parts.append(f'<img src="report/{orig_name}" alt="Original">')
-            html_parts.append(f'<img src="report/{crop_name}" alt="Cropped">')
-            html_parts.append(f'<p>Original: {img.size[0]}x{img.size[1]} → Cropped: {cropped.size[0]}x{cropped.size[1]}</p>')
-            html_parts.append('</div>')
+        html_parts.append(f'<div class="pair">')
+        html_parts.append(f'<h3>Pair #{i}: {dup["image1"]} vs {dup["image2"]}</h3>')
+        
+        html_parts.append('<div class="images">')
+        html_parts.append(f'<div class="image-container"><img src="{rel_path1}" alt="{dup["image1"]}"><p>{dup["image1"]}</p></div>')
+        html_parts.append(f'<div class="image-container"><img src="{rel_path2}" alt="{dup["image2"]}"><p>{dup["image2"]}</p></div>')
+        html_parts.append('</div>')
+        
+        html_parts.append('<div class="metrics">')
+        html_parts.append(f'<strong>Average Distance:</strong> <span class="metric-good">{dup["avg_distance"]:.2f}</span> (Lower is more similar)<br>')
+        html_parts.append(f'<strong>Histogram Similarity:</strong> <span class="metric-good">{dup["histogram_similarity"]:.3f}</span> (Higher is more similar)<br>')
+        html_parts.append(f'<strong>Hash Distances:</strong> {", ".join(f"{k}={v}" for k, v in dup["distances"].items())}')
+        html_parts.append('</div>')
+        
+        html_parts.append('</div>')
     
     html_parts.append('</body></html>')
     
-    with open(Path(image_dir) / output_html, 'w', encoding='utf-8') as f:
+    report_path = output_dir / filename
+    with open(report_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(html_parts))
     
-    print(f"Created comparison report: {image_dir}/{output_html}")
+    print(f"Created duplicate pairs report: {report_path}")
 
 
 def parse_arguments():
@@ -486,28 +495,14 @@ def parse_arguments():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  # Basic usage with default settings (moderate)
+  # Basic usage
   python image_dedup.py /path/to/screenshots
 
-  # Lenient mode (catches all visually similar)
-  python image_dedup.py /path/to/screenshots --mode lenient
-
-  # Strict mode (only near-identical)
-  python image_dedup.py /path/to/screenshots --mode strict
+  # Compare all modes (generates 3 reports)
+  python image_dedup.py /path/to/screenshots --compare-modes
 
   # Custom settings
-  python image_dedup.py /path/to/screenshots --threshold 15 --blur --downscale
-
-  # Save visualizations and cropped images
-  python image_dedup.py /path/to/screenshots --save-crops --visualize
-
-  # Get detailed output
-  python image_dedup.py /path/to/screenshots --debug
-
-Modes:
-  lenient   - Catches all visually similar (threshold=15, blur=True)
-  moderate  - Balanced (threshold=12, blur=True) [DEFAULT]
-  strict    - Only near-identical (threshold=8, no blur)
+  python image_dedup.py /path/to/screenshots --mode lenient --report
         """
     )
     
@@ -525,6 +520,12 @@ Modes:
         choices=['lenient', 'moderate', 'strict'],
         default='moderate',
         help='Detection sensitivity mode (default: moderate)'
+    )
+    
+    parser.add_argument(
+        '--compare-modes',
+        action='store_true',
+        help='Run all 3 modes and generate separate reports for comparison'
     )
     
     # Advanced settings (override mode)
@@ -636,32 +637,12 @@ def get_settings_from_mode(mode):
     return modes.get(mode, modes['moderate'])
 
 
-if __name__ == "__main__":
-    # Parse command line arguments
-    args = parse_arguments()
-    
-    # Validate directory
-    IMAGE_DIR = Path(args.directory)
-    if not IMAGE_DIR.exists():
-        print(f"Error: Directory '{IMAGE_DIR}' does not exist")
-        sys.exit(1)
-    
-    if not IMAGE_DIR.is_dir():
-        print(f"Error: '{IMAGE_DIR}' is not a directory")
-        sys.exit(1)
-    
-    # Check for images
-    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
-    images = [f for f in IMAGE_DIR.rglob('*') if f.suffix.lower() in image_extensions]
-    if not images:
-        print(f"Error: No images found in '{IMAGE_DIR}'")
-        print(f"Looking for: {', '.join(image_extensions)}")
-        sys.exit(1)
-    
-    print(f"Found {len(images)} images in '{IMAGE_DIR}'")
-    
+def run_deduplication(image_dir, output_dir, mode, args, report_suffix=''):
+    """
+    Run a single deduplication pass.
+    """
     # Get settings from mode
-    settings = get_settings_from_mode(args.mode)
+    settings = get_settings_from_mode(mode)
     
     # Override with custom arguments if provided
     threshold = args.threshold if args.threshold else settings['threshold']
@@ -682,53 +663,12 @@ if __name__ == "__main__":
         downscale = False
     else:
         downscale = settings['downscale']
-    
-    # Output directory
-    output_dir = Path(args.output_dir) if args.output_dir else IMAGE_DIR
-    output_dir.mkdir(exist_ok=True)
-    
-    print("\n" + "="*70)
-    print("SMART VIDEO CONFERENCE SCREENSHOT DEDUPLICATION")
-    print("="*70 + "\n")
-    
-    print(f"Mode: {args.mode.upper()}")
-    print(f"Description: {settings['description']}")
-    print(f"Input directory: {IMAGE_DIR}")
-    print(f"Output directory: {output_dir}")
-    print("\nSettings:")
-    print(f"  Threshold: {threshold}")
-    print(f"  Histogram threshold: {histogram_threshold}")
-    print(f"  Crop method: {args.crop_method}")
-    print(f"  Use blur: {use_blur}")
-    print(f"  Downscale: {downscale}")
-    print(f"  Save crops: {args.save_crops}")
-    print(f"  Visualizations: {args.visualize}")
-    print(f"  HTML report: {args.report}")
-    print()
-    
-    # Step 1: Create visualizations if requested
-    if args.visualize:
-        print("=" * 70)
-        print("Step 1: Creating crop visualizations...")
-        print("=" * 70 + "\n")
         
-        vis_dir = output_dir / 'crop_visualizations'
-        vis_dir.mkdir(exist_ok=True)
-        
-        for img_path in list(IMAGE_DIR.rglob('*'))[:5]:  # First 5 images
-            if img_path.suffix.lower() in image_extensions:
-                vis_path = vis_dir / f"vis_{img_path.name}"
-                visualize_crop_regions(img_path, vis_path, method=args.crop_method)
-        
-        print(f"✓ Visualizations saved to: {vis_dir}\n")
-    
-    # Step 2: Find duplicates
-    print("=" * 70)
-    print("Step 2: Finding duplicates with smart cropping...")
-    print("=" * 70 + "\n")
+    print(f"\nRunning Mode: {mode.upper()}")
+    print(f"Settings: Threshold={threshold}, Hist={histogram_threshold}, Blur={use_blur}, Downscale={downscale}")
     
     duplicates, images_data = find_duplicates_with_smart_crop(
-        IMAGE_DIR,
+        image_dir,
         crop_method=args.crop_method,
         threshold=threshold,
         histogram_threshold=histogram_threshold,
@@ -738,44 +678,57 @@ if __name__ == "__main__":
         debug=args.debug
     )
     
-    # Step 3: Create HTML report if requested
-    if args.report:
-        print("\n" + "=" * 70)
-        print("Step 3: Creating comparison report...")
-        print("=" * 70 + "\n")
-        
-        create_comparison_report(IMAGE_DIR)
-        print(f"✓ HTML report created: {IMAGE_DIR}/comparison_report.html\n")
+    # Create duplicate pairs report
+    report_name = f'duplicates_report_{mode}{report_suffix}.html'
+    create_duplicate_pairs_report(duplicates, output_dir, report_name)
     
-    # Step 4: Display recommendations
-    if duplicates:
-        print("\n" + "=" * 70)
-        print("Step 4: Recommendations")
-        print("=" * 70 + "\n")
+    return duplicates
+
+
+if __name__ == "__main__":
+    # Parse command line arguments
+    args = parse_arguments()
+    
+    # Validate directory
+    IMAGE_DIR = Path(args.directory)
+    if not IMAGE_DIR.exists():
+        print(f"Error: Directory '{IMAGE_DIR}' does not exist")
+        sys.exit(1)
+    
+    if not IMAGE_DIR.is_dir():
+        print(f"Error: '{IMAGE_DIR}' is not a directory")
+        sys.exit(1)
+    
+    # Output directory
+    output_dir = Path(args.output_dir) if args.output_dir else IMAGE_DIR
+    output_dir.mkdir(exist_ok=True)
+    
+    print("\n" + "="*70)
+    print("SMART VIDEO CONFERENCE SCREENSHOT DEDUPLICATION")
+    print("="*70 + "\n")
+    
+    if args.compare_modes:
+        print("COMPARING ALL MODES (Strict, Moderate, Lenient)")
+        modes = ['strict', 'moderate', 'lenient']
+        results = {}
         
-        recommendations = keep_best_from_duplicates(duplicates, keep_strategy='first')
+        for mode in modes:
+            duplicates = run_deduplication(IMAGE_DIR, output_dir, mode, args)
+            results[mode] = len(duplicates)
+            
+        print("\n" + "="*70)
+        print("COMPARISON RESULTS:")
+        for mode in modes:
+            print(f"  {mode.upper()}: Found {results[mode]} duplicate pairs")
+        print(f"\nCheck the generated HTML reports in {output_dir}")
         
-        total_to_remove = sum(len(rec['remove']) for rec in recommendations)
-        space_saved = (total_to_remove / len(images)) * 100
-        
-        print(f"Summary:")
-        print(f"  Total images: {len(images)}")
-        print(f"  Duplicate pairs: {len(duplicates)}")
-        print(f"  Images to remove: {total_to_remove}")
-        print(f"  Space saved: ~{space_saved:.1f}%")
     else:
-        print("\n✓ No duplicates found with current settings")
-        print("\nIf you expected duplicates:")
-        print("  • Try using --mode lenient")
-        print("  • Or increase --threshold (try 15-18)")
-        print("  • Add --blur flag for video screenshots")
+        # Single run
+        run_deduplication(IMAGE_DIR, output_dir, args.mode, args)
+        
+        # Create crop comparison report if requested (only for single run)
+        if args.report:
+            create_comparison_report(IMAGE_DIR)
     
     print("\n" + "=" * 70)
-    print("\nDone! Check the output directory for results.")
-    
-    if args.save_crops:
-        print(f"  Cropped images: {output_dir}/cropped_for_comparison/")
-    if args.visualize:
-        print(f"  Crop visualizations: {output_dir}/crop_visualizations/")
-    if args.report:
-        print(f"  HTML report: {IMAGE_DIR}/comparison_report.html")
+    print("\nDone!")
