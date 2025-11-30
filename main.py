@@ -24,7 +24,7 @@ from downloader import download_youtube_video, get_video_title
 from transcript import download_youtube_transcript, clean_transcript_text
 from extractor import detect_unique_screenshots
 from analyzer import analyze_images_comprehensive
-from pdf_generator import convert_screenshots_to_pdf, sync_images_with_transcript
+from pdf_generator import convert_screenshots_to_pdf, sync_images_with_transcript, sync_images_with_transcript_docx
 from report_generator import create_markdown_report
 
 
@@ -40,6 +40,7 @@ Examples:
   python main.py "https://youtu.be/VIDEO_ID" --download-transcript
   python main.py "https://youtu.be/VIDEO_ID" --download-transcript --create-combined
   python main.py "https://youtu.be/VIDEO_ID" --download-transcript --clean-transcript --create-combined
+  python main.py "https://youtu.be/VIDEO_ID" --download-transcript --create-docx
         """
     )
     
@@ -112,6 +113,12 @@ Examples:
         action="store_true",
         help="Create a combined PDF with images and synchronized transcript"
     )
+
+    parser.add_argument(
+        "--create-docx",
+        action="store_true",
+        help="Create a combined DOCX with images and synchronized transcript"
+    )
     
     parser.add_argument(
         "--create-markdown",
@@ -160,6 +167,12 @@ Examples:
         "--skip-extraction",
         action="store_true",
         help="Skip video download and image extraction, only run post-processing on existing images"
+    )
+
+    parser.add_argument(
+        "--optimize-images",
+        action="store_true",
+        help="Optimize images (crop borders) before generating PDF/DOCX"
     )
 
     parser.add_argument(
@@ -212,6 +225,16 @@ Examples:
         # Initialize output folders
         output_folder, images_folder = initialize_output_folder(video_name, output_dir)
         
+        # Move metadata file if it was created in the temp/video folder during download
+        # The downloader creates it next to the video file
+        if video_path and os.path.exists(video_path):
+            temp_metadata = os.path.join(os.path.dirname(video_path), "metadata.txt")
+            if os.path.exists(temp_metadata):
+                import shutil
+                final_metadata = os.path.join(output_folder, "metadata.txt")
+                shutil.copy2(temp_metadata, final_metadata)
+                print(f"Metadata file moved to: {final_metadata}")
+        
         # Create duplicates folder if requested
         duplicates_folder = None
         if args.save_duplicates:
@@ -235,10 +258,16 @@ Examples:
         
         # If we skipped download or didn't request it, try to find existing transcript
         if not transcript_txt:
-            possible_transcripts = glob.glob(os.path.join(output_folder, "*.txt"))
+            # Check transcripts subfolder first
+            transcripts_folder = os.path.join(output_folder, "transcripts")
+            possible_transcripts = glob.glob(os.path.join(transcripts_folder, "*.txt"))
+            
+            # Also check main folder for backward compatibility
+            possible_transcripts.extend(glob.glob(os.path.join(output_folder, "*.txt")))
+            
             for t in possible_transcripts:
                 filename = os.path.basename(t)
-                if "cleaned" not in filename and "report" not in filename and "info" not in filename:
+                if "cleaned" not in filename and "report" not in filename and "info" not in filename and "metadata" not in filename:
                     transcript_txt = t
                     print(f"Found existing transcript: {transcript_txt}")
                     break
@@ -283,8 +312,25 @@ Examples:
                 print(f"  - {len(analysis_result['duplicates'])} duplicate groups")
                 print(f"\nPlease review the report: {analysis_result['report_path']}")
         
+        # Optimize images (crop) if requested
+        if args.optimize_images:
+            print("\nOptimizing images (cropping borders)...")
+            from scripts.optimize_images import process_images
+            # We process in-place or to a new folder? 
+            # The workflow creates 'images_optimized'. 
+            # To keep main.py simple, let's process in-place or update images_folder to point to optimized ones.
+            
+            images_optimized_folder = os.path.join(output_folder, "images_optimized")
+            process_images(images_folder, images_optimized_folder, crop=True, compress=False, format='png')
+            
+            # Update images_folder to point to the optimized images for subsequent steps
+            images_folder = images_optimized_folder
+            print(f"Using optimized images from: {images_folder}")
+
         # Convert to PDF
-        pdf_path = convert_screenshots_to_pdf(images_folder, output_folder, video_name)
+        # We append '_slides_only' to avoid conflict with the combined PDF if both are generated
+        # Or if the user only wants slides, this is still clear.
+        pdf_path = convert_screenshots_to_pdf(images_folder, output_folder, f"{video_name}_slides_only")
         
         # Create cleaned transcript if requested
         cleaned_transcript_path = None
@@ -292,8 +338,20 @@ Examples:
             print("\nCreating cleaned transcript...")
             try:
                 cleaned_transcript_path = os.path.join(output_folder, "transcript_cleaned.txt")
-                with open(transcript_txt, 'r', encoding='utf-8') as f:
-                    transcript_content = f.read()
+                
+                # Try different encodings
+                transcript_content = None
+                for encoding in ['utf-8', 'utf-16', 'utf-16-le', 'utf-16-be', 'cp1252']:
+                    try:
+                        with open(transcript_txt, 'r', encoding=encoding) as f:
+                            transcript_content = f.read()
+                        print(f"Read transcript with encoding: {encoding}")
+                        break
+                    except UnicodeDecodeError:
+                        continue
+                
+                if transcript_content is None:
+                    raise ValueError("Could not read transcript file with any encoding")
                 
                 # Extract all text (remove timestamps for cleaning)
                 text_only = re.sub(r'\[\d{2}:\d{2}:\d{2}\]\s*', '', transcript_content)
@@ -311,7 +369,18 @@ Examples:
             combined_pdf_path = sync_images_with_transcript(
                 images_folder, 
                 transcript_txt, 
-                output_folder
+                output_folder,
+                video_name
+            )
+
+        # Create combined DOCX if requested
+        combined_docx_path = None
+        if args.create_docx and transcript_txt:
+            combined_docx_path = sync_images_with_transcript_docx(
+                images_folder, 
+                transcript_txt, 
+                output_folder,
+                video_name
             )
             
         # Create Markdown report if requested
@@ -342,6 +411,8 @@ Examples:
             print(f"Cleaned transcript saved to: {cleaned_transcript_path}")
         if combined_pdf_path:
             print(f"Combined PDF (images + transcript) saved to: {combined_pdf_path}")
+        if combined_docx_path:
+            print(f"Combined DOCX (images + transcript) saved to: {combined_docx_path}")
         if markdown_path:
             print(f"NotebookLM Markdown Report saved to: {markdown_path}")
         print("="*60)

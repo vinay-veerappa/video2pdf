@@ -8,5 +8,5 @@ DETECT_SHADOWS = False
 MIN_PERCENT = 0.1  # min % diff to detect motion stopped
 MAX_PERCENT = 0.3  # max % diff to detect motion
 SIMILARITY_THRESHOLD = 0.8  # Grid SSIM threshold (80% matching cells)
-MIN_TIME_BETWEEN_CAPTURES = 0  # Minimum seconds between captures (0 = disabled by default)
+MIN_TIME_BETWEEN_CAPTURES = 1  # Minimum seconds between captures (0 = disabled by default)
 MAX_SIMILARITY_COMPARISONS = 5  # Compare with last N images

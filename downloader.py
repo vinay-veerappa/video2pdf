@@ -56,6 +56,30 @@ def download_youtube_video(url, output_dir, cookies_path=None):
         
         video_path = downloaded_files[0]
         print(f"Video downloaded successfully: {video_path}")
+        
+        # Create metadata file
+        try:
+            # We need to know where the final folder will be. 
+            # This function returns a temp path, but the caller (main.py) moves/uses it.
+            # However, we can save metadata in the same temp dir for now, or return it.
+            # Better approach: main.py calls initialize_output_folder which creates the final folder.
+            # Let's write metadata to the temp dir, and let main.py or utils.py handle moving it?
+            # Or better yet, just write it here if we can.
+            
+            # Actually, let's write it to the output_dir/video_title/metadata.txt
+            # But we don't know the video title folder name yet easily here without re-sanitizing.
+            # Let's write it alongside the video file in the temp dir, and update main.py to move it.
+            
+            metadata_path = os.path.join(os.path.dirname(video_path), "metadata.txt")
+            with open(metadata_path, 'w', encoding='utf-8') as f:
+                f.write(f"url: {url}\n")
+                # We can also add title if we want
+                # title = os.path.splitext(os.path.basename(video_path))[0]
+                # f.write(f"title: {title}\n")
+            print(f"Metadata file created: {metadata_path}")
+        except Exception as e:
+            print(f"Warning: Could not create metadata file: {e}")
+            
         return video_path
         
     except subprocess.CalledProcessError as e:

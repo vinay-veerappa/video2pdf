@@ -17,6 +17,10 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
     """Download transcript/subtitles from YouTube video using youtube-transcript-api (fast) or yt-dlp (fallback)"""
     print(f"\nDownloading transcript from YouTube video...")
     
+    # Create transcripts subfolder
+    transcripts_folder = os.path.join(output_folder, "transcripts")
+    os.makedirs(transcripts_folder, exist_ok=True)
+    
     # Extract video ID
     video_id = None
     if 'watch?v=' in url:
@@ -24,7 +28,7 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
     elif 'youtu.be/' in url:
         video_id = url.split('youtu.be/')[1].split('?')[0].split('&')[0]
     
-    txt_path = os.path.join(output_folder, "transcript.txt")
+    txt_path = os.path.join(transcripts_folder, "transcript.txt")
     
     # Method 1: Try youtube-transcript-api (Faster, cleaner)
     if YOUTUBE_TRANSCRIPT_API_AVAILABLE and video_id:
@@ -96,7 +100,7 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
             "--skip-download",  # Don't download video, just subtitles
             "--sub-lang", lang,
             "--sub-format", "vtt",  # WebVTT format (can also use 'srt', 'json3')
-            "-o", os.path.join(output_folder, "%(title)s.%(ext)s"),
+            "-o", os.path.join(transcripts_folder, "%(title)s.%(ext)s"),
         ]
         
         # Add cookies if available
@@ -118,7 +122,7 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
         # Find downloaded subtitle files
         subtitle_files = []
         for ext in ['*.vtt', '*.srt', '*.json3']:
-            subtitle_files.extend(glob.glob(os.path.join(output_folder, ext)))
+            subtitle_files.extend(glob.glob(os.path.join(transcripts_folder, ext)))
         
         if subtitle_files:
             # Get the most recent subtitle file
@@ -126,7 +130,7 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
             print(f"Transcript downloaded: {subtitle_file}")
             
             # Also create a plain text version for easier reading (with timestamps)
-            transcript_txt_path = os.path.join(output_folder, "transcript.txt")
+            transcript_txt_path = os.path.join(transcripts_folder, "transcript.txt")
             convert_vtt_to_txt(subtitle_file, transcript_txt_path, keep_timestamps=True)
             
             return subtitle_file, transcript_txt_path

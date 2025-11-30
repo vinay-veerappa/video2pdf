@@ -44,18 +44,34 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
     print(f"\nFound {len(image_files)} images in {images_folder}")
     
     # Check for metadata file to get YouTube URL
+    # Check for metadata file to get YouTube URL
     metadata_file = os.path.join(video_folder, "metadata.txt")
     if youtube_url is None and os.path.exists(metadata_file):
         print(f"\nReading metadata from {metadata_file}")
-        try:
-            with open(metadata_file, 'r', encoding='utf-8') as f:
-                for line in f:
-                    if line.startswith('url:'):
-                        youtube_url = line.split('url:', 1)[1].strip()
-                        print(f"Found YouTube URL: {youtube_url}")
-                        break
-        except Exception as e:
-            print(f"Warning: Could not read metadata file: {e}")
+        
+        encodings = ['utf-8', 'utf-16', 'utf-16-le', 'utf-16-be', 'cp1252']
+        metadata_content = None
+        
+        for encoding in encodings:
+            try:
+                with open(metadata_file, 'r', encoding=encoding) as f:
+                    metadata_content = f.read()
+                print(f"Successfully read metadata with encoding: {encoding}")
+                break
+            except UnicodeDecodeError:
+                continue
+            except Exception as e:
+                print(f"Error reading metadata with {encoding}: {e}")
+                continue
+        
+        if metadata_content:
+            for line in metadata_content.splitlines():
+                if line.startswith('url:'):
+                    youtube_url = line.split('url:', 1)[1].strip()
+                    print(f"Found YouTube URL: {youtube_url}")
+                    break
+        else:
+            print("Failed to read metadata file with any encoding.")
 
     
     # Create organized folder structure
@@ -75,12 +91,15 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         print("="*70)
         from transcript import download_youtube_transcript
         
-        _, transcript_path = download_youtube_transcript(
+        print(f"Downloading transcript for URL: {youtube_url}")
+        print(f"Target folder: {transcripts_folder}")
+        vtt_path, transcript_path = download_youtube_transcript(
             youtube_url,
             transcripts_folder,
             lang='en',
             prefer_auto=False
         )
+        print(f"Download result - VTT: {vtt_path}, TXT: {transcript_path}")
     else:
         # Look for existing transcript
         print("\n" + "="*70)
@@ -88,7 +107,8 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         print("="*70)
         possible_transcripts = glob.glob(os.path.join(video_folder, "*.txt"))
         for t in possible_transcripts:
-            if "cleaned" not in os.path.basename(t) and "report" not in os.path.basename(t):
+            filename = os.path.basename(t)
+            if "cleaned" not in filename and "report" not in filename and "metadata" not in filename:
                 # Move to transcripts folder
                 transcript_path = os.path.join(transcripts_folder, "transcript.txt")
                 shutil.copy(t, transcript_path)
@@ -97,6 +117,15 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
     
     if not transcript_path or not os.path.exists(transcript_path):
         print("Warning: No transcript found. PDF will be created without transcript.")
+    else:
+        print(f"Using transcript file: {transcript_path}")
+        print(f"Transcript file size: {os.path.getsize(transcript_path)} bytes")
+        # Print first few lines for debug
+        try:
+            with open(transcript_path, 'r', encoding='utf-8') as f:
+                print(f"Transcript head: {f.read(200)}...")
+        except Exception as e:
+            print(f"Could not read transcript head: {e}")
     
     # Step 2: Optimize images (crop borders)
     print("\n" + "="*70)
@@ -156,6 +185,32 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         if os.path.exists(generated_pdf):
             shutil.move(generated_pdf, final_pdf)
     
+    # Step 5: Generate DOCX with transcript
+    print("\n" + "="*70)
+    print("STEP 5: Generating DOCX")
+    print("="*70)
+    
+    final_docx = os.path.join(video_folder, "final.docx")
+    
+    if transcript_path and os.path.exists(transcript_path):
+        from pdf_generator import sync_images_with_transcript_docx
+        # Use optimized images for DOCX as well
+        sync_images_with_transcript_docx(
+            images_optimized,
+            transcript_path,
+            video_folder
+        )
+        
+        # Rename to final.docx if needed (the function creates combined_slides_with_transcript.docx)
+        generated_docx = os.path.join(video_folder, "combined_slides_with_transcript.docx")
+        if os.path.exists(generated_docx):
+            if os.path.exists(final_docx):
+                os.remove(final_docx)
+            os.rename(generated_docx, final_docx)
+            print(f"DOCX created: {final_docx}")
+    else:
+        print("Skipping DOCX generation (no transcript available)")
+    
     # Summary
     print("\n" + "="*70)
     print("WORKFLOW COMPLETE!")
@@ -166,11 +221,17 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         print(f"  - Transcripts: {transcripts_folder}/")
     print(f"  - Analysis reports: {reports_folder}/")
     print(f"  - Final PDF: {final_pdf}")
+    if os.path.exists(final_docx):
+        print(f"  - Final DOCX: {final_docx}")
     
     # Show file size
     if os.path.exists(final_pdf):
         pdf_size = os.path.getsize(final_pdf) / 1024 / 1024
         print(f"\nFinal PDF size: {pdf_size:.2f} MB")
+    
+    if os.path.exists(final_docx):
+        docx_size = os.path.getsize(final_docx) / 1024 / 1024
+        print(f"Final DOCX size: {docx_size:.2f} MB")
     
     print("\n" + "="*70)
 
