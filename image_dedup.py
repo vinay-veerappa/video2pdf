@@ -305,9 +305,12 @@ def find_duplicates_with_smart_crop(image_dir,
                     processed = processed.resize((w//2, h//2), Image.LANCZOS)
                 
                 # Save cropped version if requested
+                crop_path_str = None
                 if save_crops and crop_dir:
                     crop_path = crop_dir / f"cropped_{img_path.name}"
                     cropped.save(crop_path)
+                    crop_path_str = str(crop_path)
+                    
                     if use_blur or downscale:
                         processed_path = crop_dir / f"processed_{img_path.name}"
                         processed.save(processed_path)
@@ -320,11 +323,12 @@ def find_duplicates_with_smart_crop(image_dir,
                     'name': img_path.name,
                     'original': img,
                     'cropped': cropped,
-                    'processed': processed,  # NEW: Store processed version
+                    'processed': processed,
                     'hashes': hashes,
                     'original_size': img.size,
                     'cropped_size': cropped.size,
-                    'processed_size': processed.size
+                    'processed_size': processed.size,
+                    'crop_path': crop_path_str
                 })
                 
                 if debug:
@@ -359,6 +363,8 @@ def find_duplicates_with_smart_crop(image_dir,
                     'image2': images_data[j]['name'],
                     'path1': images_data[i]['path'],
                     'path2': images_data[j]['path'],
+                    'crop_path1': images_data[i]['crop_path'],
+                    'crop_path2': images_data[j]['crop_path'],
                     **comparison
                 })
     
@@ -430,6 +436,7 @@ def keep_best_from_duplicates(duplicates, keep_strategy='first'):
 def create_duplicate_pairs_report(duplicates, output_dir, filename='duplicates_report.html'):
     """
     Create an HTML report showing detected duplicate pairs side-by-side.
+    Uses cropped images if available.
     """
     html_parts = [
         '<html><head><style>',
@@ -443,30 +450,37 @@ def create_duplicate_pairs_report(duplicates, output_dir, filename='duplicates_r
         '.metric-good { color: #388e3c; font-weight: bold; }',
         'h1 { color: #333; }',
         'h3 { margin-top: 0; color: #555; }',
+        '.note { color: #666; font-style: italic; font-size: 0.9em; margin-bottom: 10px; }',
         '</style></head><body>',
-        f'<h1>Duplicate Pairs Report ({len(duplicates)} pairs)</h1>'
+        f'<h1>Duplicate Pairs Report ({len(duplicates)} pairs)</h1>',
+        '<p class="note">Note: Showing cropped images used for comparison. If cropped images are not available, original images are shown.</p>'
     ]
     
     # Sort duplicates by similarity (lower distance is better)
     sorted_dups = sorted(duplicates, key=lambda x: x['avg_distance'])
     
     for i, dup in enumerate(sorted_dups, 1):
+        # Determine which paths to use (cropped if available, else original)
+        path1 = dup.get('crop_path1') or dup['path1']
+        path2 = dup.get('crop_path2') or dup['path2']
+        is_cropped = bool(dup.get('crop_path1') and dup.get('crop_path2'))
+        
         # Calculate relative path for images
         try:
             # Try to make paths relative to the report file
-            rel_path1 = os.path.relpath(dup['path1'], output_dir)
-            rel_path2 = os.path.relpath(dup['path2'], output_dir)
+            rel_path1 = os.path.relpath(path1, output_dir)
+            rel_path2 = os.path.relpath(path2, output_dir)
         except ValueError:
             # Fallback to absolute paths if on different drives
-            rel_path1 = Path(dup['path1']).as_uri()
-            rel_path2 = Path(dup['path2']).as_uri()
+            rel_path1 = Path(path1).as_uri()
+            rel_path2 = Path(path2).as_uri()
             
         html_parts.append(f'<div class="pair">')
         html_parts.append(f'<h3>Pair #{i}: {dup["image1"]} vs {dup["image2"]}</h3>')
         
         html_parts.append('<div class="images">')
-        html_parts.append(f'<div class="image-container"><img src="{rel_path1}" alt="{dup["image1"]}"><p>{dup["image1"]}</p></div>')
-        html_parts.append(f'<div class="image-container"><img src="{rel_path2}" alt="{dup["image2"]}"><p>{dup["image2"]}</p></div>')
+        html_parts.append(f'<div class="image-container"><img src="{rel_path1}" alt="{dup["image1"]}"><p>{dup["image1"]}{" (Cropped)" if is_cropped else ""}</p></div>')
+        html_parts.append(f'<div class="image-container"><img src="{rel_path2}" alt="{dup["image2"]}"><p>{dup["image2"]}{" (Cropped)" if is_cropped else ""}</p></div>')
         html_parts.append('</div>')
         
         html_parts.append('<div class="metrics">')
@@ -667,6 +681,9 @@ def run_deduplication(image_dir, output_dir, mode, args, report_suffix=''):
     print(f"\nRunning Mode: {mode.upper()}")
     print(f"Settings: Threshold={threshold}, Hist={histogram_threshold}, Blur={use_blur}, Downscale={downscale}")
     
+    # Force save_crops to True for reporting
+    save_crops = True
+    
     duplicates, images_data = find_duplicates_with_smart_crop(
         image_dir,
         crop_method=args.crop_method,
@@ -674,7 +691,7 @@ def run_deduplication(image_dir, output_dir, mode, args, report_suffix=''):
         histogram_threshold=histogram_threshold,
         use_blur=use_blur,
         downscale=downscale,
-        save_crops=args.save_crops,
+        save_crops=save_crops,
         debug=args.debug
     )
     
