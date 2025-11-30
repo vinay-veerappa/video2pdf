@@ -4,10 +4,12 @@ Automatically detects and crops out video conference UI artifacts
 """
 
 import os
+import sys
+import argparse
 import numpy as np
 from pathlib import Path
 from collections import defaultdict
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFilter
 import imagehash
 from sklearn.metrics.pairwise import cosine_similarity
 
@@ -239,22 +241,33 @@ def compute_histogram_similarity(img1, img2):
 
 def find_duplicates_with_smart_crop(image_dir, 
                                      crop_method='auto',
-                                     threshold=8,
+                                     threshold=12,  # Increased from 8
+                                     histogram_threshold=0.90,  # Lowered from 0.95
+                                     use_blur=True,  # NEW: Add blur preprocessing
+                                     downscale=True,  # NEW: Downscale before comparison
                                      save_crops=False,
                                      debug=False):
     """
     Find duplicates using smart video conference cropping.
+    OPTIMIZED FOR VIDEO SCREENSHOTS - more lenient matching.
     
     Args:
         image_dir: Directory containing screenshots
         crop_method: 'auto', 'conservative', 'aggressive', or 'sides'
-        threshold: Perceptual hash distance threshold (0-15)
+        threshold: Perceptual hash distance (12-15 recommended for video)
+        histogram_threshold: Color similarity (0.88-0.92 for video)
+        use_blur: Apply Gaussian blur to reduce noise
+        downscale: Resize before comparison for more forgiving matching
         save_crops: Save cropped versions to see what's being compared
         debug: Print detailed information
     """
-    print(f"=== SMART VIDEO CONFERENCE DEDUPLICATION ===")
+    
+    print(f"=== SMART VIDEO CONFERENCE DEDUPLICATION (OPTIMIZED) ===")
     print(f"Crop method: {crop_method}")
-    print(f"Threshold: {threshold}\n")
+    print(f"Threshold: {threshold} (12-15 recommended for video)")
+    print(f"Histogram threshold: {histogram_threshold}")
+    print(f"Use blur: {use_blur}")
+    print(f"Downscale: {downscale}\n")
     
     # Load and process all images
     images_data = []
@@ -279,29 +292,48 @@ def find_duplicates_with_smart_crop(image_dir,
                 # Smart crop
                 cropped = smart_crop_video_conference(img, method=crop_method, debug=debug)
                 
+                # NEW: Apply preprocessing for better video screenshot matching
+                processed = cropped.copy()
+                
+                # Apply blur to reduce compression artifacts
+                if use_blur:
+                    processed = processed.filter(ImageFilter.GaussianBlur(radius=2))
+                
+                # Downscale to make small differences negligible
+                if downscale:
+                    w, h = processed.size
+                    processed = processed.resize((w//2, h//2), Image.LANCZOS)
+                
                 # Save cropped version if requested
                 if save_crops and crop_dir:
                     crop_path = crop_dir / f"cropped_{img_path.name}"
                     cropped.save(crop_path)
+                    if use_blur or downscale:
+                        processed_path = crop_dir / f"processed_{img_path.name}"
+                        processed.save(processed_path)
                 
-                # Compute multiple hashes
-                hashes = compute_multi_scale_hash(cropped)
+                # Compute multiple hashes on processed image
+                hashes = compute_multi_scale_hash(processed)
                 
                 images_data.append({
                     'path': str(img_path),
                     'name': img_path.name,
                     'original': img,
                     'cropped': cropped,
+                    'processed': processed,  # NEW: Store processed version
                     'hashes': hashes,
                     'original_size': img.size,
-                    'cropped_size': cropped.size
+                    'cropped_size': cropped.size,
+                    'processed_size': processed.size
                 })
                 
                 if debug:
                     orig_w, orig_h = img.size
                     crop_w, crop_h = cropped.size
+                    proc_w, proc_h = processed.size
                     print(f"  Original: {orig_w}x{orig_h}")
-                    print(f"  Cropped: {crop_w}x{crop_h} ({crop_w/orig_w*100:.1f}% x {crop_h/orig_h*100:.1f}%)")
+                    print(f"  Cropped: {crop_w}x{crop_h}")
+                    print(f"  Processed: {proc_w}x{proc_h}")
                     print()
                 
             except Exception as e:
@@ -346,6 +378,55 @@ def find_duplicates_with_smart_crop(image_dir,
     return duplicates, images_data
 
 
+def keep_best_from_duplicates(duplicates, keep_strategy='first'):
+    """
+    Analyze duplicate pairs and recommend which images to keep/remove.
+    """
+    # Build adjacency list of duplicates
+    adj = defaultdict(set)
+    for dup in duplicates:
+        adj[dup['image1']].add(dup['image2'])
+        adj[dup['image2']].add(dup['image1'])
+    
+    # Find connected components (groups of duplicates)
+    seen = set()
+    groups = []
+    
+    for img in adj:
+        if img not in seen:
+            component = set()
+            stack = [img]
+            while stack:
+                node = stack.pop()
+                if node not in seen:
+                    seen.add(node)
+                    component.add(node)
+                    stack.extend(adj[node] - seen)
+            groups.append(list(component))
+            
+    recommendations = []
+    for group in groups:
+        # Sort by name to be deterministic
+        group.sort()
+        
+        if keep_strategy == 'first':
+            keep = group[0]
+            remove = group[1:]
+        elif keep_strategy == 'last':
+            keep = group[-1]
+            remove = group[:-1]
+        else:
+            keep = group[0]
+            remove = group[1:]
+            
+        recommendations.append({
+            'keep': keep,
+            'remove': remove
+        })
+        
+    return recommendations
+
+
 def create_comparison_report(image_dir, output_html='comparison_report.html'):
     """
     Create an HTML report showing original vs cropped images side by side.
@@ -364,7 +445,7 @@ def create_comparison_report(image_dir, output_html='comparison_report.html'):
         # Skip output directories
         if any(x in str(img_path) for x in ['crop_visualizations', 'cropped_for_comparison', 'report']):
             continue
-            
+
         if img_path.suffix.lower() in ['.jpg', '.jpeg', '.png', '.gif', '.bmp']:
             img = Image.open(img_path)
             
@@ -396,65 +477,305 @@ def create_comparison_report(image_dir, output_html='comparison_report.html'):
     print(f"Created comparison report: {image_dir}/{output_html}")
 
 
+def parse_arguments():
+    """
+    Parse command line arguments.
+    """
+    parser = argparse.ArgumentParser(
+        description='Smart Video Conference Screenshot Deduplication Tool',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Basic usage with default settings (moderate)
+  python image_dedup.py /path/to/screenshots
+
+  # Lenient mode (catches all visually similar)
+  python image_dedup.py /path/to/screenshots --mode lenient
+
+  # Strict mode (only near-identical)
+  python image_dedup.py /path/to/screenshots --mode strict
+
+  # Custom settings
+  python image_dedup.py /path/to/screenshots --threshold 15 --blur --downscale
+
+  # Save visualizations and cropped images
+  python image_dedup.py /path/to/screenshots --save-crops --visualize
+
+  # Get detailed output
+  python image_dedup.py /path/to/screenshots --debug
+
+Modes:
+  lenient   - Catches all visually similar (threshold=15, blur=True)
+  moderate  - Balanced (threshold=12, blur=True) [DEFAULT]
+  strict    - Only near-identical (threshold=8, no blur)
+        """
+    )
+    
+    # Required arguments
+    parser.add_argument(
+        'directory',
+        type=str,
+        help='Directory containing video conference screenshots'
+    )
+    
+    # Mode selection
+    parser.add_argument(
+        '--mode',
+        type=str,
+        choices=['lenient', 'moderate', 'strict'],
+        default='moderate',
+        help='Detection sensitivity mode (default: moderate)'
+    )
+    
+    # Advanced settings (override mode)
+    parser.add_argument(
+        '--threshold',
+        type=int,
+        help='Perceptual hash threshold (8-20, higher=more lenient)'
+    )
+    
+    parser.add_argument(
+        '--histogram-threshold',
+        type=float,
+        help='Histogram similarity threshold (0.0-1.0, lower=more lenient)'
+    )
+    
+    parser.add_argument(
+        '--crop-method',
+        type=str,
+        choices=['auto', 'conservative', 'aggressive', 'sides'],
+        default='auto',
+        help='Method for cropping UI regions (default: auto)'
+    )
+    
+    parser.add_argument(
+        '--blur',
+        action='store_true',
+        help='Apply blur to reduce noise (recommended for video)'
+    )
+    
+    parser.add_argument(
+        '--no-blur',
+        action='store_true',
+        help='Disable blur preprocessing'
+    )
+    
+    parser.add_argument(
+        '--downscale',
+        action='store_true',
+        help='Downscale images before comparison'
+    )
+    
+    parser.add_argument(
+        '--no-downscale',
+        action='store_true',
+        help='Disable downscaling'
+    )
+    
+    # Output options
+    parser.add_argument(
+        '--save-crops',
+        action='store_true',
+        help='Save cropped images for inspection'
+    )
+    
+    parser.add_argument(
+        '--visualize',
+        action='store_true',
+        help='Create visualization showing crop regions'
+    )
+    
+    parser.add_argument(
+        '--report',
+        action='store_true',
+        help='Generate HTML comparison report'
+    )
+    
+    parser.add_argument(
+        '--debug',
+        action='store_true',
+        help='Print detailed debugging information'
+    )
+    
+    parser.add_argument(
+        '--output-dir',
+        type=str,
+        help='Directory for output files (default: same as input)'
+    )
+    
+    return parser.parse_args()
+
+
+def get_settings_from_mode(mode):
+    """
+    Get preset settings based on mode.
+    """
+    modes = {
+        'lenient': {
+            'threshold': 15,
+            'histogram_threshold': 0.88,
+            'use_blur': True,
+            'downscale': True,
+            'description': 'Catches all visually similar images (recommended for video)'
+        },
+        'moderate': {
+            'threshold': 12,
+            'histogram_threshold': 0.92,
+            'use_blur': True,
+            'downscale': False,
+            'description': 'Balanced accuracy and recall (default)'
+        },
+        'strict': {
+            'threshold': 8,
+            'histogram_threshold': 0.95,
+            'use_blur': False,
+            'downscale': False,
+            'description': 'Only near-identical images'
+        }
+    }
+    return modes.get(mode, modes['moderate'])
+
+
 if __name__ == "__main__":
-    import argparse
+    # Parse command line arguments
+    args = parse_arguments()
     
-    parser = argparse.ArgumentParser(description="Smart Video Conference Screenshot Deduplication")
-    parser.add_argument("image_dir", help="Directory containing screenshots")
-    parser.add_argument("--method", default="auto", choices=['auto', 'conservative', 'aggressive', 'sides'], help="Cropping method")
-    parser.add_argument("--threshold", type=int, default=8, help="Duplicate threshold")
-    parser.add_argument("--no-report", action="store_true", help="Skip generating HTML report")
+    # Validate directory
+    IMAGE_DIR = Path(args.directory)
+    if not IMAGE_DIR.exists():
+        print(f"Error: Directory '{IMAGE_DIR}' does not exist")
+        sys.exit(1)
     
-    args = parser.parse_args()
+    if not IMAGE_DIR.is_dir():
+        print(f"Error: '{IMAGE_DIR}' is not a directory")
+        sys.exit(1)
     
-    IMAGE_DIR = args.image_dir
+    # Check for images
+    image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
+    images = [f for f in IMAGE_DIR.rglob('*') if f.suffix.lower() in image_extensions]
+    if not images:
+        print(f"Error: No images found in '{IMAGE_DIR}'")
+        print(f"Looking for: {', '.join(image_extensions)}")
+        sys.exit(1)
     
-    if not os.path.exists(IMAGE_DIR):
-        print(f"Error: Directory not found: {IMAGE_DIR}")
-        exit(1)
+    print(f"Found {len(images)} images in '{IMAGE_DIR}'")
     
+    # Get settings from mode
+    settings = get_settings_from_mode(args.mode)
+    
+    # Override with custom arguments if provided
+    threshold = args.threshold if args.threshold else settings['threshold']
+    histogram_threshold = args.histogram_threshold if args.histogram_threshold else settings['histogram_threshold']
+    
+    # Handle blur flags
+    if args.blur:
+        use_blur = True
+    elif args.no_blur:
+        use_blur = False
+    else:
+        use_blur = settings['use_blur']
+    
+    # Handle downscale flags
+    if args.downscale:
+        downscale = True
+    elif args.no_downscale:
+        downscale = False
+    else:
+        downscale = settings['downscale']
+    
+    # Output directory
+    output_dir = Path(args.output_dir) if args.output_dir else IMAGE_DIR
+    output_dir.mkdir(exist_ok=True)
+    
+    print("\n" + "="*70)
     print("SMART VIDEO CONFERENCE SCREENSHOT DEDUPLICATION")
     print("="*70 + "\n")
     
-    # Step 1: Visualize what will be cropped (optional)
-    print("Step 1: Creating crop visualizations...")
-    vis_dir = Path(IMAGE_DIR) / 'crop_visualizations'
-    vis_dir.mkdir(exist_ok=True)
+    print(f"Mode: {args.mode.upper()}")
+    print(f"Description: {settings['description']}")
+    print(f"Input directory: {IMAGE_DIR}")
+    print(f"Output directory: {output_dir}")
+    print("\nSettings:")
+    print(f"  Threshold: {threshold}")
+    print(f"  Histogram threshold: {histogram_threshold}")
+    print(f"  Crop method: {args.crop_method}")
+    print(f"  Use blur: {use_blur}")
+    print(f"  Downscale: {downscale}")
+    print(f"  Save crops: {args.save_crops}")
+    print(f"  Visualizations: {args.visualize}")
+    print(f"  HTML report: {args.report}")
+    print()
     
-    # Get first few images
-    images = sorted(list(Path(IMAGE_DIR).rglob('*.png'))) + sorted(list(Path(IMAGE_DIR).rglob('*.jpg')))
-    
-    if not images:
-        print(f"No images found in {IMAGE_DIR}")
-        exit(1)
+    # Step 1: Create visualizations if requested
+    if args.visualize:
+        print("=" * 70)
+        print("Step 1: Creating crop visualizations...")
+        print("=" * 70 + "\n")
         
-    for img_path in images[:3]:  # First 3 images
-        vis_path = vis_dir / f"vis_{img_path.name}"
-        visualize_crop_regions(img_path, vis_path, method=args.method)
+        vis_dir = output_dir / 'crop_visualizations'
+        vis_dir.mkdir(exist_ok=True)
+        
+        for img_path in list(IMAGE_DIR.rglob('*'))[:5]:  # First 5 images
+            if img_path.suffix.lower() in image_extensions:
+                vis_path = vis_dir / f"vis_{img_path.name}"
+                visualize_crop_regions(img_path, vis_path, method=args.crop_method)
+        
+        print(f"✓ Visualizations saved to: {vis_dir}\n")
     
-    print(f"Check {vis_dir} to see what will be cropped\n")
+    # Step 2: Find duplicates
+    print("=" * 70)
+    print("Step 2: Finding duplicates with smart cropping...")
+    print("=" * 70 + "\n")
     
-    # Step 2: Find duplicates with smart cropping
-    print("\nStep 2: Finding duplicates with smart cropping...")
     duplicates, images_data = find_duplicates_with_smart_crop(
         IMAGE_DIR,
-        crop_method=args.method,
-        threshold=args.threshold,
-        save_crops=True,  # Save cropped versions for inspection
-        debug=True
+        crop_method=args.crop_method,
+        threshold=threshold,
+        histogram_threshold=histogram_threshold,
+        use_blur=use_blur,
+        downscale=downscale,
+        save_crops=args.save_crops,
+        debug=args.debug
     )
     
-    # Step 3: Create comparison report
-    if not args.no_report:
-        print("\nStep 3: Creating comparison report...")
+    # Step 3: Create HTML report if requested
+    if args.report:
+        print("\n" + "=" * 70)
+        print("Step 3: Creating comparison report...")
+        print("=" * 70 + "\n")
+        
         create_comparison_report(IMAGE_DIR)
+        print(f"✓ HTML report created: {IMAGE_DIR}/comparison_report.html\n")
     
-    print("\n" + "="*70)
-    print("\nKEY FEATURES:")
-    print("  ✓ Automatic UI detection (finds dark bars, low-variance regions)")
-    print("  ✓ Multi-scale hashing (phash, average, dhash, whash)")
-    print("  ✓ Histogram similarity comparison")
-    print("  ✓ Crop visualizations (red = removed, green = kept)")
-    print("  ✓ Comparison report (side-by-side original vs cropped)")
-    print("  ✓ Saves cropped versions for manual inspection")
-    print("\nInstall: pip install pillow imagehash numpy scikit-learn")
+    # Step 4: Display recommendations
+    if duplicates:
+        print("\n" + "=" * 70)
+        print("Step 4: Recommendations")
+        print("=" * 70 + "\n")
+        
+        recommendations = keep_best_from_duplicates(duplicates, keep_strategy='first')
+        
+        total_to_remove = sum(len(rec['remove']) for rec in recommendations)
+        space_saved = (total_to_remove / len(images)) * 100
+        
+        print(f"Summary:")
+        print(f"  Total images: {len(images)}")
+        print(f"  Duplicate pairs: {len(duplicates)}")
+        print(f"  Images to remove: {total_to_remove}")
+        print(f"  Space saved: ~{space_saved:.1f}%")
+    else:
+        print("\n✓ No duplicates found with current settings")
+        print("\nIf you expected duplicates:")
+        print("  • Try using --mode lenient")
+        print("  • Or increase --threshold (try 15-18)")
+        print("  • Add --blur flag for video screenshots")
+    
+    print("\n" + "=" * 70)
+    print("\nDone! Check the output directory for results.")
+    
+    if args.save_crops:
+        print(f"  Cropped images: {output_dir}/cropped_for_comparison/")
+    if args.visualize:
+        print(f"  Crop visualizations: {output_dir}/crop_visualizations/")
+    if args.report:
+        print(f"  HTML report: {IMAGE_DIR}/comparison_report.html")
