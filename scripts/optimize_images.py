@@ -84,17 +84,29 @@ def process_images(input_dir, output_dir=None, crop=False, compress=False, forma
             box = get_content_bbox(img)
             crop_boxes.append(box)
             
-        # Calculate median crop box for consistency
+        # Calculate UNION crop box (safest)
+        # We want the smallest x,y (top-left) and the largest w,h (bottom-right)
+        # to ensure we include content that might only appear on some slides.
         if crop_boxes:
             boxes = np.array(crop_boxes)
-            # Use median to ignore outliers (like vis_002)
-            median_x = int(np.median(boxes[:, 0]))
-            median_y = int(np.median(boxes[:, 1]))
-            median_w = int(np.median(boxes[:, 2]))
-            median_h = int(np.median(boxes[:, 3]))
             
-            final_crop = (median_x, median_y, median_w, median_h)
-            print(f"Calculated consistent crop: {final_crop}")
+            # Calculate min/max coordinates
+            # box = [x, y, w, h]
+            # x2 = x + w, y2 = y + h
+            x1s = boxes[:, 0]
+            y1s = boxes[:, 1]
+            x2s = boxes[:, 0] + boxes[:, 2]
+            y2s = boxes[:, 1] + boxes[:, 3]
+            
+            # Use 10th percentile for min and 90th for max to ignore extreme outliers
+            # but still capture almost everything
+            union_x1 = int(np.percentile(x1s, 5))
+            union_y1 = int(np.percentile(y1s, 5))
+            union_x2 = int(np.percentile(x2s, 95))
+            union_y2 = int(np.percentile(y2s, 95))
+            
+            final_crop = (union_x1, union_y1, union_x2 - union_x1, union_y2 - union_y1)
+            print(f"Calculated consistent crop (Union): {final_crop}")
     
     # Pass 2: Apply processing
     for i, img_path in enumerate(image_files):

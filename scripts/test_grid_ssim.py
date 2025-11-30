@@ -5,7 +5,7 @@ import os
 import glob
 import argparse
 
-def grid_ssim(img1, img2, grid_size=(4, 4), threshold=0.95, min_matching_cells=0.8, visualize=False, output_path=None):
+def grid_ssim(img1, img2, grid_size=(8, 8), threshold=0.95, min_matching_cells=0.8, visualize=False, output_path=None):
     """
     Compare images using a grid-based SSIM.
     Returns True if images are duplicates.

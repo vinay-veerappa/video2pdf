@@ -84,6 +84,13 @@ def calculate_similarity(img1, img2, method='ssim'):
             print(f"CNN error: {e}")
             return 0.0
             
+    elif method == 'grid':
+        # Grid SSIM
+        # Returns boolean is_dup and score (ratio of matching cells)
+        # We return the score as similarity
+        is_dup, score = grid_ssim(img1, img2)
+        return score
+
     return 0.0
 
 
@@ -106,7 +113,7 @@ def calculate_hamming_distance(hash1, hash2):
     """Calculate Hamming distance between two hashes"""
     return bin(int(hash1) ^ int(hash2)).count('1')
 
-def grid_ssim(img1, img2, grid_size=(4, 4), threshold=0.95, min_matching_cells=0.8):
+def grid_ssim(img1, img2, grid_size=(8, 8), threshold=0.95, min_matching_cells=0.8):
     """
     Compare images using a grid-based SSIM.
     Returns True if images are duplicates.
