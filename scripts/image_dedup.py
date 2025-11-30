@@ -12,6 +12,7 @@ from pathlib import Path
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFilter
 import imagehash
+import cv2
 from sklearn.metrics.pairwise import cosine_similarity
 
 # Deep learning imports (optional)
@@ -20,7 +21,16 @@ try:
     from torchvision import models, transforms
     DEEP_LEARNING_AVAILABLE = True
 except ImportError:
+    DEEP_LEARNING_AVAILABLE = True
+except ImportError:
     DEEP_LEARNING_AVAILABLE = False
+
+# OCR import (optional)
+try:
+    import easyocr
+    OCR_AVAILABLE = True
+except ImportError:
+    OCR_AVAILABLE = False
 
 
 def analyze_image_content(img, debug=False):
@@ -43,11 +53,14 @@ def analyze_image_content(img, debug=False):
     height, width = img_array.shape[:2]
     total_pixels = height * width
     
-    # Analyze center region (excludes top/bottom 10% for browser UI)
+    # Analyze center region (excludes 10% margin on all sides for browser/video UI)
     top_margin = int(height * 0.10)
     bottom_margin = int(height * 0.90)
-    center_gray = gray[top_margin:bottom_margin, :]
-    center_array = img_array[top_margin:bottom_margin, :, :]
+    left_margin = int(width * 0.10)
+    right_margin = int(width * 0.90)
+    
+    center_gray = gray[top_margin:bottom_margin, left_margin:right_margin]
+    center_array = img_array[top_margin:bottom_margin, left_margin:right_margin, :]
     
     # Calculate metrics
     variance_full = np.var(img_array)
@@ -122,14 +135,47 @@ def analyze_image_content(img, debug=False):
         blank_score += 1
         blank_reasons.append(f"Low color diversity ({color_diversity:.2f})")
     
+    # Check 7: Non-Slide Detection (Camera feeds, photos, complex backgrounds)
+    # Refined based on user feedback to target specific low-intensity camera feeds (e.g. 043, 032, 085)
+    # These specific examples have:
+    # - Dominant intensity < 10% (043=8.2%, 032=8.2%)
+    # - Color diversity = 1.00 (Very high)
+    # - OR Very low entropy (< 2.0) like 085
+    
+    is_likely_nonslide = False
+    
+        
+    
+    #if is_likely_nonslide:
+    #    blank_score += 3
+    
+    # Check 7: Non-Slide Detection (Camera feeds, photos, complex backgrounds)
+    # Aggressive check: Low intensity + High diversity
+    # We rely on OCR to save any valid slides that get flagged here.
+    # REFINED: Only flag if intensity is VERY low (< 10%) and diversity is VERY high (> 0.9)
+    if max_intensity_percentage < 10 and color_diversity > 0.9:
+        blank_score += 3
+        blank_reasons.append(f"Likely non-slide (Low intensity {max_intensity_percentage:.1f}%, Diversity {color_diversity:.2f})")
+    
     # Protection: Don't flag code/text editors as blank
+    # Editors usually have high variance/std_dev but also high dominant intensity (background)
+    # So we only protect if dominant intensity is reasonable
     has_significant_content = (
-        (variance_center > 2500 and std_dev_center > 35) or
+        (variance_center > 2000 and std_dev_center > 35) or
         variance_center > 5000
     )
     
+    # Override protection if it looks like a camera feed
+    # (OCR will be the final judge)
+    if "Likely non-slide" in str(blank_reasons):
+        has_significant_content = False
+
     # Final decision
-    if blank_score >= 2 and not has_significant_content:
+    # FORCE BLANK if entropy is very low (User Request)
+    if entropy < 3.0:
+        is_blank = True
+        blank_reasons.append(f"FORCE BLANK: Entropy {entropy:.2f} < 3.0")
+    elif blank_score >= 2 and not has_significant_content:
         is_blank = True
     else:
         is_blank = False
@@ -145,6 +191,11 @@ def analyze_image_content(img, debug=False):
     score += min(25, std_dev_center * 5)
     score += min(25, entropy * 3)
     score += color_diversity * 25
+    
+    # Penalize non-slides in the score
+    if is_likely_nonslide:
+        score = max(0, score - 50)
+        
     metrics['content_score'] = score
     
     if debug:
@@ -152,7 +203,7 @@ def analyze_image_content(img, debug=False):
         print(f"    Full Image:")
         print(f"      Variance: {variance_full:.2f}, Std Dev: {std_dev_full:.2f}")
         print(f"      Brightness: {mean_brightness:.1f}")
-        print(f"    Center Region (excludes top/bottom 10%):")
+        print(f"    Center Region (excludes 10% margin):")
         print(f"      Variance: {variance_center:.2f}, Std Dev: {std_dev_center:.2f}")
         print(f"      Brightness: {mean_brightness_center:.1f}")
         print(f"    Overall:")
@@ -166,11 +217,106 @@ def analyze_image_content(img, debug=False):
         print(f"      FINAL is_blank: {is_blank}")
         print(f"      Content score: {score:.2f}/100")
         if is_blank:
-            print(f"    ⚠️  BLANK: {', '.join(blank_reasons)}")
+            print(f"    ⚠️  BLANK/NON-SLIDE: {', '.join(blank_reasons)}")
         else:
             print(f"    ✓ Has content")
     
     return metrics
+
+
+def check_text_content(img, reader):
+    """
+    Check for text content using OCR.
+    Returns (has_text, text_count, confidence)
+    """
+    if not reader:
+        return False, 0, 0.0, []
+        
+    try:
+        # Convert to bytes for EasyOCR
+        img_np = np.array(img)
+        result = reader.readtext(img_np)
+        
+        # Filter for confident text
+        valid_text = [text for bbox, text, conf in result if conf > 0.4 and len(text.strip()) > 1]
+        text_count = len(valid_text)
+        avg_conf = sum(conf for _, _, conf in result) / len(result) if result else 0
+        
+        return text_count > 0, text_count, avg_conf, valid_text
+    except Exception as e:
+        print(f"OCR Error: {e}")
+        return False, 0, 0.0, []
+
+
+def check_graphics_content(img, entropy=None, debug_path=None):
+    """
+    Check for significant graphics (charts, diagrams) using line detection.
+    Focuses on center region to avoid UI borders.
+    Returns (has_graphics, score, reason)
+    """
+    # Safety check: If entropy is extremely low (< 2.0), it's likely a blank screen
+    # with artifacts (like a player bar) that look like lines. Don't trust it.
+    if entropy is not None and entropy < 2.0:
+        return False, 0, f"Ignored lines due to low entropy ({entropy:.2f})"
+
+    try:
+        # Crop to center 60% (20% margins) to avoid border lines/UI
+        w, h = img.size
+        left, top, right, bottom = int(w*0.20), int(h*0.20), int(w*0.80), int(h*0.80)
+        crop = img.crop((left, top, right, bottom))
+        
+        # Save debug visualization if requested
+        if debug_path:
+            from PIL import ImageDraw
+            try:
+                # Create a visualization: Original with box + Cropped
+                vis = Image.new('RGB', (w + (right-left), h), (255, 255, 255))
+                
+                # Draw box on original
+                orig_with_box = img.copy()
+                draw = ImageDraw.Draw(orig_with_box)
+                draw.rectangle([left, top, right, bottom], outline="red", width=5)
+                vis.paste(orig_with_box, (0, 0))
+                
+                # Paste crop
+                vis.paste(crop, (w, top)) # Align vertically with the crop area
+                
+                vis.save(debug_path)
+            except Exception as e:
+                print(f"Failed to save debug crop: {e}")
+
+        # Convert PIL to OpenCV format
+        img_np = np.array(crop.convert('RGB'))
+        img_cv = cv2.cvtColor(img_np, cv2.COLOR_RGB2BGR)
+        gray = cv2.cvtColor(img_cv, cv2.COLOR_BGR2GRAY)
+        
+        # 1. Edge Detection
+        edges = cv2.Canny(gray, 50, 150)
+        
+        # 2. Line Detection (Hough)
+        # distinct lines often indicate charts/diagrams
+        # Min line length 100px to avoid noise/artifacts
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, threshold=50, minLineLength=100, maxLineGap=10)
+        line_count = len(lines) if lines is not None else 0
+        
+        # Criteria for "Graphics"
+        # - Significant straight lines (> 1) implies artificial structure (charts)
+        # User requested threshold reduction to 1
+        
+        is_graphic = False
+        reason = []
+        
+        if line_count > 1:
+            is_graphic = True
+            reason.append(f"Found {line_count} straight lines (Chart/Grid)")
+        else:
+            reason.append(f"Only {line_count} lines found (Threshold > 1)")
+            
+        return is_graphic, line_count, ", ".join(reason)
+        
+    except Exception as e:
+        print(f"Graphics Check Error: {e}")
+        return False, 0, ""
 
 
 def get_image_files(image_dir, exclude_folders=None):
@@ -206,6 +352,23 @@ def find_blank_images(image_dir, content_threshold=25, save_report=True, debug=F
     
     print(f"Found {len(image_paths)} images to analyze\n")
     
+    print(f"Found {len(image_paths)} images to analyze\n")
+    
+    # Initialize OCR if requested
+    ocr_reader = None
+    if OCR_AVAILABLE:
+        print("Initializing OCR engine (EasyOCR)...")
+        try:
+            # Suppress verbose output
+            import logging
+            logging.getLogger('easyocr').setLevel(logging.ERROR)
+            ocr_reader = easyocr.Reader(['en'], gpu=True, verbose=False)
+            print("✓ OCR initialized")
+        except Exception as e:
+            print(f"⚠ OCR initialization failed: {e}")
+    else:
+        print("⚠ EasyOCR not installed. Skipping OCR verification.")
+
     blank_images = []
     all_images = []
     start_time = time.time()
@@ -231,11 +394,62 @@ def find_blank_images(image_dir, content_threshold=25, save_report=True, debug=F
             all_images.append(image_data)
             
             if metrics['is_blank'] or metrics['content_score'] < content_threshold:
-                blank_images.append(image_data)
-                if not debug:
-                    print(f"⚠️  BLANK: {img_path.name} (score: {metrics['content_score']:.1f}, indicators: {metrics['blank_score']}/6)")
-                    for reason in metrics['blank_reasons'][:3]:
-                        print(f"     → {reason}")
+                # OCR Verification for borderline cases
+                is_confirmed_blank = True
+                ocr_text = []
+                
+                if ocr_reader:
+                    # Run OCR on the center crop to verify
+                    # We use the same center margins as analysis
+                    w, h = img.size
+                    crop = img.crop((int(w*0.15), int(h*0.15), int(w*0.85), int(h*0.85)))
+                    has_text, count, conf, texts = check_text_content(crop, ocr_reader)
+                    
+                    if has_text:
+                        # If meaningful text is found, it's likely a slide!
+                        if count >= 3: # Threshold: at least 3 words/blocks
+                            is_confirmed_blank = False
+                            metrics['is_blank'] = False
+                            metrics['blank_reasons'].append(f"SAVED by OCR: Found {count} text blocks")
+                            # Boost score to save it
+                            metrics['content_score'] = max(metrics['content_score'], 50)
+                            ocr_text = texts
+                
+                # Graphics Verification
+                # Run for all flagged images to get debug info, but only use to SAVE if not already saved by OCR
+                debug_crop_path = None
+                if debug:
+                    debug_dir = output_dir / "debug_crops"
+                    debug_dir.mkdir(exist_ok=True)
+                    debug_crop_path = debug_dir / f"{img_path.stem}_crop.jpg"
+                
+                has_graphics, graph_score, graph_reason = check_graphics_content(img, metrics['entropy'], debug_crop_path)
+                image_data['graphics_info'] = graph_reason
+                
+                if is_confirmed_blank:
+                    if has_graphics:
+                        is_confirmed_blank = False
+                        metrics['is_blank'] = False
+                        metrics['blank_reasons'].append(f"SAVED by Graphics: {graph_reason}")
+                        metrics['content_score'] = max(metrics['content_score'], 50)
+                
+                if is_confirmed_blank:
+                    blank_images.append(image_data)
+                    if not debug:
+                        print(f"⚠️  BLANK: {img_path.name} (score: {metrics['content_score']:.1f}, indicators: {metrics['blank_score']}/6)")
+                        for reason in metrics['blank_reasons'][:3]:
+                            print(f"     → {reason}")
+                        if ocr_text:
+                            print(f"     → OCR found minimal text: {ocr_text}")
+                else:
+                    # It was saved
+                    if not debug:
+                        save_reason = "OCR" if ocr_text else ("Graphics" if has_graphics else "Unknown")
+                        print(f"✓ SAVED ({save_reason}): {img_path.name}")
+            
+            image_data['ocr_text'] = ocr_text if 'ocr_text' in locals() else []
+            if 'graphics_info' not in image_data:
+                 image_data['graphics_info'] = ""
             
             if debug:
                 print()
@@ -324,8 +538,15 @@ def create_blank_images_report(all_images, blank_images, output_path, threshold)
             html.append(f'<div class="metric">Variance(ctr): {img["variance_center"]:.0f}</div>')
             html.append(f'<div class="metric">Entropy: {img["entropy"]:.2f}</div>')
             html.append(f'<div class="metric">Brightness(ctr): {img["mean_brightness_center"]:.0f}</div>')
+            html.append(f'<div class="metric">Color Div: {img["color_diversity"]:.2f}</div>')
+            html.append(f'<div class="metric">Dom. Int: {img["dominant_intensity_percentage"]:.1f}%</div>')
+            html.append(f'<div class="metric">StdDev(ctr): {img["std_dev_center"]:.1f}</div>')
             html.append('</div>')
-            if img['blank_reasons']:
+            if img.get('ocr_text'):
+                html.append(f'<p style="color:#2e7d32"><b>OCR Found:</b> {len(img["ocr_text"])} blocks (e.g. "{img["ocr_text"][0] if img["ocr_text"] else ""}")</p>')
+            if img.get('graphics_info'):
+                html.append(f'<p style="color:#1976D2"><b>Graphics:</b> {img["graphics_info"]}</p>')
+            if img.get('blank_reasons'):
                 html.append(f'<p><b>Why:</b> {"; ".join(img["blank_reasons"])}</p>')
             html.append('</div>')
     
@@ -342,8 +563,18 @@ def create_blank_images_report(all_images, blank_images, output_path, threshold)
             html.append('<div class="metrics">')
             html.append(f'<div class="metric">Variance(ctr): {img["variance_center"]:.0f}</div>')
             html.append(f'<div class="metric">Entropy: {img["entropy"]:.2f}</div>')
+            html.append(f'<div class="metric">Brightness(ctr): {img["mean_brightness_center"]:.0f}</div>')
+            html.append(f'<div class="metric">Color Div: {img["color_diversity"]:.2f}</div>')
+            html.append(f'<div class="metric">Dom. Int: {img["dominant_intensity_percentage"]:.1f}%</div>')
             html.append(f'<div class="metric">StdDev(ctr): {img["std_dev_center"]:.1f}</div>')
-            html.append('</div></div>')
+            html.append('</div>')
+            if img.get('ocr_text'):
+                html.append(f'<p style="color:#2e7d32"><b>OCR Found:</b> {len(img["ocr_text"])} blocks</p>')
+            if img.get('graphics_info'):
+                html.append(f'<p style="color:#1976D2"><b>Graphics:</b> {img["graphics_info"]}</p>')
+            if img.get('blank_reasons'):
+                html.append(f'<p><b>Why:</b> {"; ".join(img["blank_reasons"])}</p>')
+            html.append('</div>')
     
     html.append('</div></body></html>')
     
