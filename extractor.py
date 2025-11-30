@@ -40,10 +40,10 @@ def get_frames(video_path, frame_rate):
 
 def detect_unique_screenshots(video_path, output_folder_screenshot_path, 
                               frame_rate, min_percent, max_percent,
-                              use_similarity=True, similarity_threshold=0.95,
+                              use_similarity=True, similarity_threshold=0.8,
                               min_time_interval=MIN_TIME_BETWEEN_CAPTURES,
                               save_duplicates_path=None,
-                              similarity_method='ssim'):
+                              similarity_method='grid'):
     """Detect and save unique screenshots from video with improved duplicate detection"""
     # Calculate derived parameters
     warmup = frame_rate

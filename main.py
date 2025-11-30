@@ -164,9 +164,9 @@ Examples:
 
     parser.add_argument(
         "--similarity-method", 
-        choices=['ssim', 'phash', 'cnn'], 
-        default='ssim', 
-        help="Method for duplicate detection (default: ssim)"
+        choices=['ssim', 'phash', 'cnn', 'grid'], 
+        default='grid', 
+        help="Method for duplicate detection (default: grid - 8x8 Grid SSIM)"
     )
     
     args = parser.parse_args()
