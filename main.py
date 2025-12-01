@@ -487,7 +487,7 @@ Examples:
         sys.exit(1)
 
 
-def process_video_workflow(input_source, output_dir=OUTPUT_DIR, **kwargs):
+def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callback=None, **kwargs):
     """
     Programmatic entry point for the video processing workflow.
     Returns: Dictionary with results (output_folder, images_folder, etc.)
@@ -523,7 +523,12 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, **kwargs):
         print("Detected YouTube URL")
         video_name = get_video_title(input_source)
         if not options['skip_extraction']:
-            video_path = download_youtube_video(input_source, output_dir, cookies_path=options['cookies'])
+            video_path = download_youtube_video(
+                input_source, 
+                output_dir, 
+                cookies_path=options['cookies'],
+                progress_callback=progress_callback
+            )
         else:
             print("Skipping video download (--skip-extraction)")
     else:
@@ -595,7 +600,8 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, **kwargs):
             similarity_threshold=options['similarity_threshold'],
             min_time_interval=options['min_time_interval'],
             save_duplicates_path=duplicates_folder,
-            similarity_method=options['similarity_method']
+            similarity_method=options['similarity_method'],
+            progress_callback=progress_callback
         )
     else:
         existing_images = glob.glob(os.path.join(images_folder, "*.png"))

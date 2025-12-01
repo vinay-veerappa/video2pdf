@@ -47,7 +47,8 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
                               use_similarity=True, similarity_threshold=0.8,
                               min_time_interval=MIN_TIME_BETWEEN_CAPTURES,
                               save_duplicates_path=None,
-                              similarity_method='grid'):
+                              similarity_method='grid',
+                              progress_callback=None):
     """
     Detect and save unique screenshots using FFmpeg for fast extraction 
     followed by Python-based deduplication.
@@ -61,6 +62,12 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
     os.makedirs(temp_extract_dir, exist_ok=True)
     
     print(f"Extracting frames using FFmpeg (rate: {frame_rate} fps)...")
+    if progress_callback:
+        progress_callback({
+            'status': 'extracting',
+            'percent': 0,
+            'message': "Extracting frames from video..."
+        })
     
     try:
         # FFmpeg command: extract at frame_rate, resize to max 1920 width
@@ -100,7 +107,18 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
     # We need to calculate timestamps based on frame index and rate
     # frame_time = index / frame_rate
     
+    total_frames = len(extracted_files)
+    
     for i, file_path in enumerate(extracted_files):
+        # Update progress
+        if progress_callback and i % 5 == 0: # Update every 5 frames to reduce overhead
+            percent = int((i / total_frames) * 100)
+            progress_callback({
+                'status': 'analyzing',
+                'percent': percent,
+                'message': f"Analyzing frame {i}/{total_frames} ({percent}%)"
+            })
+            
         frame_time = i / frame_rate
         
         # Read image

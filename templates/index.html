@@ -1,80 +1,155 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Video2PDF Curator</title>
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; max-width: 800px; margin: 0 auto; padding: 40px; background: #f5f5f5; }
-        .container { background: white; padding: 40px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.1); text-align: center; }
-        h1 { color: #333; margin-bottom: 30px; }
-        input[type="text"] { width: 70%; padding: 12px; font-size: 16px; border: 2px solid #ddd; border-radius: 6px; margin-bottom: 20px; }
-        button { background: #007bff; color: white; border: none; padding: 12px 30px; font-size: 16px; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
-        button:hover { background: #0056b3; }
-        #status { margin-top: 20px; font-weight: bold; color: #666; }
-        .loader { border: 4px solid #f3f3f3; border-top: 4px solid #3498db; border-radius: 50%; width: 30px; height: 30px; animation: spin 1s linear infinite; display: none; margin: 20px auto; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px;
+            background: #f5f5f5;
+        }
+
+        .container {
+            background: white;
+            padding: 40px;
+            border-radius: 12px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+            text-align: center;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 30px;
+        }
+
+        input[type="text"] {
+            width: 70%;
+            padding: 12px;
+            font-size: 16px;
+            border: 2px solid #ddd;
+            border-radius: 6px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background: #007bff;
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            font-size: 16px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #0056b3;
+        }
+
+        #status {
+            margin-top: 20px;
+            font-weight: bold;
+            color: #666;
+        }
+
+        .loader {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            width: 30px;
+            height: 30px;
+            animation: spin 1s linear infinite;
+            display: none;
+            margin: 20px auto;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
 </head>
+
 <body>
     <div class="container">
         <h1>Video2PDF Curator</h1>
         <p>Enter a YouTube URL to begin converting it to a PDF slide deck.</p>
-        
+
         <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=..." />
         <br>
         <button onclick="startProcess()">Start Processing</button>
-        
+
         <div class="loader" id="loader"></div>
-        <div id="status"></div>
+        <div id="progress-container" style="display:none; margin-top: 20px;">
+            <progress id="progressBar" value="0" max="100" style="width: 100%; height: 20px;"></progress>
+            <div id="status"></div>
+        </div>
     </div>
 
     <script>
         function startProcess() {
             const url = document.getElementById('urlInput').value;
             if (!url) return alert("Please enter a URL");
-            
+
             document.getElementById('loader').style.display = 'block';
+            document.getElementById('progress-container').style.display = 'block';
             document.getElementById('status').innerText = "Starting...";
-            
+            document.getElementById('progressBar').value = 0;
+
             fetch('/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: 'url=' + encodeURIComponent(url)
             })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                    document.getElementById('loader').style.display = 'none';
-                } else {
-                    pollStatus(data.job_id);
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                alert("Error starting process");
-            });
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                        document.getElementById('loader').style.display = 'none';
+                    } else {
+                        pollStatus(data.job_id);
+                    }
+                })
+                .catch(err => {
+                    console.error(err);
+                    alert("Error starting process");
+                });
         }
-        
+
         function pollStatus(jobId) {
             const interval = setInterval(() => {
                 fetch('/status/' + jobId)
-                .then(response => response.json())
-                .then(data => {
-                    document.getElementById('status').innerText = "Status: " + data.status;
-                    
-                    if (data.status === 'ready_for_curation') {
-                        clearInterval(interval);
-                        window.location.href = '/curate/' + data.video_id;
-                    } else if (data.status === 'error') {
-                        clearInterval(interval);
-                        alert("Error: " + data.error);
-                        document.getElementById('loader').style.display = 'none';
-                    }
-                });
+                    .then(response => response.json())
+                    .then(data => {
+                        const statusText = data.message || ("Status: " + data.status);
+                        document.getElementById('status').innerText = statusText;
+
+                        if (data.percent !== undefined) {
+                            document.getElementById('progressBar').value = data.percent;
+                        }
+
+                        if (data.status === 'ready_for_curation') {
+                            clearInterval(interval);
+                            window.location.href = '/curate/' + data.video_id;
+                        } else if (data.status === 'error') {
+                            clearInterval(interval);
+                            alert("Error: " + data.error);
+                            document.getElementById('loader').style.display = 'none';
+                        }
+                    });
             }, 1000);
         }
     </script>
 </body>
+
 </html>

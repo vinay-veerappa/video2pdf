@@ -4,91 +4,97 @@ import subprocess
 import glob
 from utils import get_youtube_cookies
 
-def download_youtube_video(url, output_dir, cookies_path=None):
-    """Download YouTube video using yt-dlp"""
+import yt_dlp
+
+def download_youtube_video(url, output_dir, cookies_path=None, progress_callback=None):
+    """
+    Download YouTube video using yt-dlp library with progress tracking.
+    progress_callback(data): function to receive progress updates.
+    """
     print(f"Downloading video from YouTube: {url}")
-    
-    # Check if yt-dlp is available
-    try:
-        subprocess.run([sys.executable, "-m", "yt_dlp", "--version"], 
-                      capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        raise Exception("yt-dlp is not installed. Please install it with: pip install yt-dlp")
     
     # Create temp directory for downloads
     temp_dir = os.path.join(output_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)
     
+    # Progress hook
+    def progress_hook(d):
+        if d['status'] == 'downloading':
+            if progress_callback:
+                # Calculate percentage
+                p = d.get('_percent_str', '0%').replace('%','')
+                try:
+                    percent = float(p)
+                except:
+                    percent = 0
+                
+                # Get ETA
+                eta = d.get('_eta_str', 'Unknown')
+                
+                progress_callback({
+                    'status': 'downloading',
+                    'percent': percent,
+                    'message': f"Downloading: {d.get('_percent_str')} (ETA: {eta})"
+                })
+        elif d['status'] == 'finished':
+            if progress_callback:
+                progress_callback({
+                    'status': 'downloading',
+                    'percent': 100,
+                    'message': "Download complete. Processing..."
+                })
+
+    ydl_opts = {
+        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        'merge_output_format': 'mp4',
+        'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
+        'noplaylist': True,
+        'progress_hooks': [progress_hook],
+        'quiet': True,
+        'no_warnings': True
+    }
+
+    # Add cookies
+    if cookies_path and os.path.exists(cookies_path):
+        print(f"Using cookies from: {cookies_path}")
+        ydl_opts['cookiefile'] = cookies_path
+    else:
+        auto_cookies = get_youtube_cookies()
+        if auto_cookies:
+            print(f"Using extracted browser cookies: {auto_cookies}")
+            ydl_opts['cookiefile'] = auto_cookies
+
     try:
-        # Use yt-dlp to download video
-        # Download best quality video in mp4 format
-        cmd = [
-            sys.executable, "-m", "yt_dlp",
-            "-f", "bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best",
-            "--merge-output-format", "mp4",
-            "--no-playlist",
-            "-o", os.path.join(temp_dir, "%(title)s.%(ext)s"),
-        ]
-        
-        # Add cookies if available
-        if cookies_path and os.path.exists(cookies_path):
-            print(f"Using cookies from: {cookies_path}")
-            cmd.extend(["--cookies", cookies_path])
-        else:
-            # Try automatic extraction if no specific file provided
-            auto_cookies = get_youtube_cookies()
-            if auto_cookies:
-                print(f"Using extracted browser cookies: {auto_cookies}")
-                cmd.extend(["--cookies", auto_cookies])
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=True)
+            filename = ydl.prepare_filename(info)
             
-        cmd.append(url)
-        
-        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
-        
-        # Find the downloaded file (prefer mp4, but accept any video format)
-        video_extensions = ['*.mp4', '*.mkv', '*.webm', '*.avi', '*.mov']
-        downloaded_files = []
-        for ext in video_extensions:
-            downloaded_files.extend(glob.glob(os.path.join(temp_dir, ext)))
-        
-        if not downloaded_files:
-            raise Exception("Video file not found after download")
-        
-        video_path = downloaded_files[0]
-        print(f"Video downloaded successfully: {video_path}")
-        
-        # Create metadata file
-        try:
-            # We need to know where the final folder will be. 
-            # This function returns a temp path, but the caller (main.py) moves/uses it.
-            # However, we can save metadata in the same temp dir for now, or return it.
-            # Better approach: main.py calls initialize_output_folder which creates the final folder.
-            # Let's write metadata to the temp dir, and let main.py or utils.py handle moving it?
-            # Or better yet, just write it here if we can.
+            # If merged, the filename might be different (mp4)
+            if 'merge_output_format' in ydl_opts:
+                base, _ = os.path.splitext(filename)
+                filename = base + '.mp4'
             
-            # Actually, let's write it to the output_dir/video_title/metadata.txt
-            # But we don't know the video title folder name yet easily here without re-sanitizing.
-            # Let's write it alongside the video file in the temp dir, and update main.py to move it.
+            if not os.path.exists(filename):
+                # Fallback search if filename logic fails
+                files = glob.glob(os.path.join(temp_dir, "*.mp4"))
+                if files:
+                    filename = files[0]
+                else:
+                    raise Exception("Video file not found after download")
+
+            print(f"Video downloaded successfully: {filename}")
             
-            metadata_path = os.path.join(os.path.dirname(video_path), "metadata.txt")
+            # Create metadata file
+            metadata_path = os.path.join(os.path.dirname(filename), "metadata.txt")
             with open(metadata_path, 'w', encoding='utf-8') as f:
                 f.write(f"url: {url}\n")
-                # We can also add title if we want
-                # title = os.path.splitext(os.path.basename(video_path))[0]
-                # f.write(f"title: {title}\n")
-            print(f"Metadata file created: {metadata_path}")
-        except Exception as e:
-            print(f"Warning: Could not create metadata file: {e}")
+                f.write(f"title: {info.get('title', 'Unknown')}\n")
+                
+            return filename
             
-        return video_path
-        
-    except subprocess.CalledProcessError as e:
-        error_msg = e.stderr if e.stderr else e.stdout
-        print(f"Error downloading video: {error_msg}")
-        raise Exception(f"Failed to download video. Make sure the URL is valid and accessible.")
     except Exception as e:
-        print(f"Error: {e}")
-        raise
+        print(f"Error downloading video: {e}")
+        raise Exception(f"Failed to download video: {str(e)}")
 
 
 def get_video_title(url):
