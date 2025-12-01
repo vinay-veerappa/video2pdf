@@ -89,86 +89,72 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
             ydl_opts['cookiesfrombrowser'] = ('chrome',) 
             # Note: The user must close the browser for this to work reliably.
 
+    # Attempt 1: Preferred method (Cookies.txt or Chrome)
     try:
+        print("Attempt 1: Downloading with preferred cookies...")
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=True)
-            filename = ydl.prepare_filename(info)
-            
-            # If merged, the filename might be different (mp4)
-            if 'merge_output_format' in ydl_opts:
-                base, _ = os.path.splitext(filename)
-                filename = base + '.mp4'
-            
-            if not os.path.exists(filename):
-                # Fallback search if filename logic fails
-                files = glob.glob(os.path.join(temp_dir, "*.mp4"))
-                if files:
-                    filename = files[0]
-                else:
-                    raise Exception("Video file not found after download")
-
-            print(f"Video downloaded successfully: {filename}")
-            
-            # Create metadata file
-            metadata_path = os.path.join(os.path.dirname(filename), "metadata.txt")
-            with open(metadata_path, 'w', encoding='utf-8') as f:
-                f.write(f"url: {url}\n")
-                f.write(f"title: {info.get('title', 'Unknown')}\n")
-                
-            return filename
+            return _process_download_result(ydl, info, ydl_opts)
             
     except Exception as e:
-        print(f"Error downloading video: {e}")
-        err_msg = str(e)
-        if "cookie database" in err_msg:
-             print("\n" + "!"*60)
-             print("CRITICAL ERROR: Chrome is locking the cookie database.")
-             print("PLEASE CLOSE ALL CHROME WINDOWS IMMEDIATELY.")
-             print("Retrying in 10 seconds...")
-             print("!"*60 + "\n")
-             import time
-             time.sleep(10)
-             # Retry once
-             try:
-                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    filename = ydl.prepare_filename(info)
-                    if 'merge_output_format' in ydl_opts:
-                        base, _ = os.path.splitext(filename)
-                        filename = base + '.mp4'
-                    return filename
-             except Exception as e2:
-                 # Fallback to Edge if Chrome fails
-                 print("Chrome failed. Attempting to use Edge cookies...")
-                 try:
-                     ydl_opts['cookiesfrombrowser'] = ('edge',)
-                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                        info = ydl.extract_info(url, download=True)
-                        filename = ydl.prepare_filename(info)
-                        if 'merge_output_format' in ydl_opts:
-                            base, _ = os.path.splitext(filename)
-                            filename = base + '.mp4'
-                        return filename
-                 except Exception as e3:
-                     # Final fallback: Try WITHOUT cookies (for public videos)
-                     print("Cookies failed. Attempting to download WITHOUT cookies...")
-                     try:
-                         ydl_opts.pop('cookiefile', None)
-                         ydl_opts.pop('cookiesfrombrowser', None)
-                         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                            info = ydl.extract_info(url, download=True)
-                            filename = ydl.prepare_filename(info)
-                            if 'merge_output_format' in ydl_opts:
-                                base, _ = os.path.splitext(filename)
-                                filename = base + '.mp4'
-                            return filename
-                     except Exception as e4:
-                         raise Exception("Failed to download video even without cookies. YouTube might be blocking requests.")
+        print(f"Attempt 1 failed: {e}")
         
-        if "Sign in" in err_msg:
-             raise Exception("YouTube login failed. Please provide a valid cookies.txt or ensure you are logged in to Chrome and it is closed.")
-             
-        raise Exception(f"Failed to download video: {str(e)}")
+        # Check if it was a cookie lock issue
+        if "cookie database" in str(e):
+            print("Chrome cookie database locked. Waiting 5s...")
+            import time
+            time.sleep(5)
+        
+        # Attempt 2: Edge
+        print("Attempt 2: Trying Edge cookies...")
+        try:
+            # Clear previous cookie settings
+            ydl_opts.pop('cookiefile', None)
+            ydl_opts['cookiesfrombrowser'] = ('edge',)
+            
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=True)
+                return _process_download_result(ydl, info, ydl_opts)
+                
+        except Exception as e2:
+            print(f"Attempt 2 (Edge) failed: {e2}")
+            
+            # Attempt 3: No Cookies (Public)
+            print("Attempt 3: Trying WITHOUT cookies...")
+            try:
+                ydl_opts.pop('cookiefile', None)
+                ydl_opts.pop('cookiesfrombrowser', None)
+                
+                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    return _process_download_result(ydl, info, ydl_opts)
+                    
+            except Exception as e3:
+                print(f"Attempt 3 (No Cookies) failed: {e3}")
+                raise Exception(f"All download attempts failed. Last error: {e3}")
+
+def _process_download_result(ydl, info, opts):
+    filename = ydl.prepare_filename(info)
+    if 'merge_output_format' in opts:
+        base, _ = os.path.splitext(filename)
+        filename = base + '.mp4'
+    
+    if not os.path.exists(filename):
+         # Fallback search
+         temp_dir = os.path.dirname(filename)
+         files = glob.glob(os.path.join(temp_dir, "*.mp4"))
+         if files: return files[0]
+         raise Exception("Video file not found after download")
+         
+    print(f"Video downloaded successfully: {filename}")
+    
+    # Create metadata file
+    metadata_path = os.path.join(os.path.dirname(filename), "metadata.txt")
+    with open(metadata_path, 'w', encoding='utf-8') as f:
+        f.write(f"url: {info.get('webpage_url', '')}\n")
+        f.write(f"title: {info.get('title', 'Unknown')}\n")
+        
+    return filename
 
 
 def get_video_title(url):
