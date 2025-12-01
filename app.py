@@ -395,16 +395,12 @@ def open_folder(video_id):
     # Ensure absolute path for explorer
     output_folder = os.path.abspath(output_folder)
     
-    print(f"DEBUG: open_folder called for {video_id}")
-    print(f"DEBUG: resolved path: {output_folder}")
-    
     if os.path.exists(output_folder):
         try:
             # Force new window with explorer /n
             import subprocess
             # Try converting to backslashes explicitly just in case
             output_folder_fixed = output_folder.replace('/', '\\')
-            print(f"DEBUG: fixed path: {output_folder_fixed}")
             # Use string command with quotes to handle spaces correctly
             subprocess.Popen(f'explorer /n, "{output_folder_fixed}"')
             return jsonify({'status': 'success'})
