@@ -392,6 +392,9 @@ def generate_pdf():
 @app.route('/open_folder/<video_id>')
 def open_folder(video_id):
     output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    # Ensure absolute path for explorer
+    output_folder = os.path.abspath(output_folder)
+    
     if os.path.exists(output_folder):
         try:
             # Force new window with explorer /n,
