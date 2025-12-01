@@ -113,83 +113,37 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
         print(f"Error: FFmpeg extraction failed: {e}")
         raise Exception("FFmpeg extraction failed. Please ensure FFmpeg is installed and working.")
 
-    # 2. Process extracted frames
+    # 2. Process extracted frames (Simple Rename & Move)
     extracted_files = sorted(glob.glob(os.path.join(temp_extract_dir, "*.png")))
-    print(f"Extracted {len(extracted_files)} frames. Starting deduplication...")
+    print(f"Extracted {len(extracted_files)} frames. Moving to output folder...")
     
     screenshots_count = 0
-    previous_frames = []
-    previous_hashes = []
-    
-    # We need to calculate timestamps based on frame index and rate
-    # frame_time = index / frame_rate
-    
     total_frames = len(extracted_files)
     
     for i, file_path in enumerate(extracted_files):
         # Update progress
-        if progress_callback and i % 5 == 0: # Update every 5 frames to reduce overhead
+        if progress_callback and i % 50 == 0:
             percent = int((i / total_frames) * 100)
             progress_callback({
                 'status': 'analyzing',
                 'percent': percent,
-                'message': f"Analyzing frame {i}/{total_frames} ({percent}%)"
+                'message': f"Processing frame {i}/{total_frames}"
             })
             
+        # Calculate timestamp
         frame_time = i / frame_rate
         
-        # Read image
-        frame = cv2.imread(file_path)
-        if frame is None: continue
-        
-        should_save = True
-        
-        # 1. Fast check using dHash
-        current_hash = dhash(frame)
-        if use_similarity and previous_hashes:
-            for prev_hash in previous_hashes:
-                dist = calculate_hamming_distance(current_hash, prev_hash)
-                if dist <= 2: # Stricter threshold for dHash (very similar)
-                    should_save = False
-                    break
-        
-        # 2. Detailed check using SSIM (only if dHash didn't flag it)
-        if should_save and use_similarity and previous_frames:
-            max_similarity = 0
-            for prev_frame in previous_frames:
-                # We can use the frame directly since it's already resized by FFmpeg
-                similarity = calculate_similarity(frame, prev_frame, method=similarity_method)
-                if similarity and similarity > max_similarity:
-                    max_similarity = similarity
-            
-            if max_similarity > similarity_threshold:
-                should_save = False
-                
-                # Save duplicate if requested
-                if save_duplicates_path:
-                    filename = f"{screenshots_count:03}_{round(frame_time/60, 2)}_DUPLICATE.png"
-                    dst = os.path.join(save_duplicates_path, filename)
-                    shutil.copy2(file_path, dst)
-
-        if should_save:
-            filename = f"{screenshots_count:03}_{round(frame_time/60, 2)}.png"
-            dst = os.path.join(output_folder_screenshot_path, filename)
-            shutil.move(file_path, dst) # Move instead of copy to save space/time
-            print(f"Saved {filename}")
-            
-            previous_frames.append(frame) # Keep in memory for comparison
-            previous_hashes.append(current_hash)
-            
-            if len(previous_frames) > MAX_SIMILARITY_COMPARISONS:
-                previous_frames.pop(0)
-                previous_hashes.pop(0)
-            
-            screenshots_count += 1
+        # Rename and move
+        # We trust image_dedup.py to do the actual deduplication later
+        filename = f"{i:03}_{round(frame_time/60, 2)}.png"
+        dst = os.path.join(output_folder_screenshot_path, filename)
+        shutil.move(file_path, dst)
+        screenshots_count += 1
             
     # Cleanup temp extraction
     shutil.rmtree(temp_extract_dir)
     
     elapsed_time = time.time() - start_time
-    print(f'\n{screenshots_count} unique screenshots captured!')
+    print(f'\n{screenshots_count} frames extracted for analysis!')
     print(f'Time taken: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)')
     return screenshots_count
