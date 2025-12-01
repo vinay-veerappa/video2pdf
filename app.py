@@ -28,19 +28,53 @@ JOBS = {}
 def index():
     return render_template('index.html')
 
+@app.route('/list_videos')
+def list_videos():
+    """List existing video projects and their status."""
+    output_dir = app.config['OUTPUT_FOLDER']
+    projects = []
+    
+    if os.path.exists(output_dir):
+        for name in os.listdir(output_dir):
+            path = os.path.join(output_dir, name)
+            if os.path.isdir(path):
+                # Check status
+                has_video = os.path.exists(os.path.join(path, "video")) and len(os.listdir(os.path.join(path, "video"))) > 0
+                
+                images_dir = os.path.join(path, "images")
+                has_images = os.path.exists(images_dir) and len(glob.glob(os.path.join(images_dir, "*.png"))) > 0
+                
+                dedup_json = os.path.join(images_dir, "dedup_results.json")
+                has_dedup = os.path.exists(dedup_json)
+                
+                projects.append({
+                    'id': name,
+                    'name': name,
+                    'has_video': has_video,
+                    'has_images': has_images,
+                    'has_dedup': has_dedup
+                })
+    
+    return jsonify(projects)
+
 @app.route('/process', methods=['POST'])
 def process_video():
     data = request.form
     url = data.get('url')
+    existing_video_id = data.get('existing_video_id')
     
-    if not url:
-        return jsonify({'error': 'No URL provided'}), 400
+    # Flags
+    skip_download = data.get('skip_download') == 'true'
+    skip_extraction = data.get('skip_extraction') == 'true'
+    
+    if not url and not existing_video_id:
+        return jsonify({'error': 'No URL or Existing Video provided'}), 400
         
     # Start processing in a background thread
     job_id = "job_" + str(len(JOBS) + 1)
     JOBS[job_id] = {'status': 'processing', 'log': []}
     
-    thread = threading.Thread(target=run_processing_task, args=(job_id, url))
+    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction))
     thread.start()
     
     return jsonify({'job_id': job_id})
@@ -52,7 +86,10 @@ def job_status(job_id):
 from main import process_video_workflow
 from scripts import image_dedup
 
-def run_processing_task(job_id, url):
+from main import process_video_workflow
+from scripts import image_dedup
+
+def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False):
     """
     Run the extraction and deduplication pipeline.
     """
@@ -69,12 +106,39 @@ def run_processing_task(job_id, url):
             cookies_path = os.path.abspath('cookies.txt')
             print(f"Found cookies.txt at {cookies_path}")
         
-        # 1. Run Extraction
+        # 1. Run Extraction (or skip if requested)
+        # If existing_video_id is provided, we construct the path manually or let main.py handle it?
+        # main.py expects a URL or a file path.
+        # If we have existing_video_id, we need to find the video file.
+        
+        input_source = url
+        if existing_video_id:
+            # Find the video file in the output directory
+            video_dir = os.path.join(app.config['OUTPUT_FOLDER'], existing_video_id, "video")
+            if os.path.exists(video_dir):
+                videos = glob.glob(os.path.join(video_dir, "*.*"))
+                if videos:
+                    input_source = videos[0] # Use the local file path
+                    print(f"Using existing video file: {input_source}")
+                else:
+                    # Maybe only images exist?
+                    # If we skip extraction, we don't strictly need the video file if images are there.
+                    # But process_video_workflow might need it for naming.
+                    pass
+            
+            if not input_source:
+                 # Fallback to just using the folder name if we are skipping everything up to deduplication
+                 # But process_video_workflow needs a source.
+                 # Let's assume the user wants to resume.
+                 pass
+
         result = process_video_workflow(
-            url, 
+            input_source, 
             output_dir=app.config['OUTPUT_FOLDER'],
             progress_callback=progress_callback,
-            cookies=cookies_path
+            cookies=cookies_path,
+            skip_download=skip_download,
+            skip_extraction=skip_extraction
         )
         
         images_folder = result['images_folder']
