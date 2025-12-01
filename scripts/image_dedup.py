@@ -439,7 +439,17 @@ def find_blank_images(image_dir, content_threshold=25, debug=False):
             
             metrics = image_data # It's already flattened
             
-            if metrics['is_blank'] or metrics['content_score'] < content_threshold:
+            # Determine if potentially blank
+            is_potential_blank = metrics['is_blank'] or metrics['content_score'] < content_threshold
+            
+            # If OCR is missing, be very conservative!
+            # Only discard if score is extremely low (e.g. < 5) to avoid false positives
+            if not ocr_reader and is_potential_blank:
+                if metrics['content_score'] > 5.0:
+                    is_potential_blank = False
+                    if debug: print(f"  Saved {img_path.name} (Score {metrics['content_score']:.1f}) because OCR is missing.")
+
+            if is_potential_blank:
                 # OCR Verification for borderline cases
                 is_confirmed_blank = True
                 ocr_text = []
