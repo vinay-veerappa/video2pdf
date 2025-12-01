@@ -138,7 +138,19 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
                         filename = base + '.mp4'
                     return filename
              except Exception as e2:
-                 raise Exception("Still cannot access cookies. Please close Chrome and try again.")
+                 # Fallback to Edge if Chrome fails
+                 print("Chrome failed. Attempting to use Edge cookies...")
+                 try:
+                     ydl_opts['cookiesfrombrowser'] = ('edge',)
+                     with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        filename = ydl.prepare_filename(info)
+                        if 'merge_output_format' in ydl_opts:
+                            base, _ = os.path.splitext(filename)
+                            filename = base + '.mp4'
+                        return filename
+                 except Exception as e3:
+                     raise Exception("Failed to access cookies from Chrome and Edge. Please close browsers and try again.")
         
         if "Sign in" in err_msg:
              raise Exception("YouTube login failed. Please provide a valid cookies.txt or ensure you are logged in to Chrome and it is closed.")
