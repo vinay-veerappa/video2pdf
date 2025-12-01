@@ -58,23 +58,6 @@ def run_processing_task(job_id, url):
     """
     try:
         JOBS[job_id]['status'] = 'starting'
-        JOBS[job_id]['percent'] = 0
-        JOBS[job_id]['message'] = "Starting process..."
-        
-        def progress_callback(data):
-            JOBS[job_id].update(data)
-        
-        # 1. Run Extraction
-        result = process_video_workflow(
-            url, 
-            output_dir=app.config['OUTPUT_FOLDER'],
-            download_transcript=True,
-            optimize_images=True, # Ensure we get optimized images
-            progress_callback=progress_callback
-        )
-        
-        images_folder = result['images_folder']
-        video_name = result['video_name']
         
         JOBS[job_id]['status'] = 'analyzing'
         
