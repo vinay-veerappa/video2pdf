@@ -155,6 +155,8 @@
             <button class="btn btn-secondary" onclick="openSearchModal()">Search & Replace</button>
             <button class="btn btn-secondary" onclick="preview()">Preview</button>
             <button id="actionBtn" class="btn" onclick="generateDocuments()">Generate Documents</button>
+            <button id="cleanupBtn" class="btn btn-secondary" style="background-color: #dc3545; margin-left: 10px;"
+                onclick="cleanupFiles()">Cleanup Unused Files</button>
             <div id="statusMessage"
                 style="margin-left: 15px; font-weight: bold; color: #28a745; display: inline-block;"></div>
         </div>
@@ -340,6 +342,36 @@
                 })
                 .catch(err => {
                     console.error("Error calling open_folder:", err);
+                });
+        }
+
+        function cleanupFiles() {
+            if (!confirm("This will delete duplicates and blanks to save space.\n\nRaw images, unique slides, and documents will be KEPT.\n\nAre you sure?")) return;
+
+            const btn = document.getElementById('cleanupBtn');
+            const status = document.getElementById('statusMessage');
+
+            btn.disabled = true;
+            btn.innerText = "Cleaning...";
+
+            fetch(`/cleanup/${videoId}`, { method: 'POST' })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`Cleanup Complete!\n\nDeleted: ${data.deleted_count} files\nReclaimed: ${data.reclaimed_space}`);
+                        btn.innerText = "Cleanup Done";
+                        status.innerText = `Cleaned up ${data.reclaimed_space}`;
+                        status.style.color = "#dc3545";
+                    } else {
+                        alert("Error: " + data.error);
+                        btn.disabled = false;
+                        btn.innerText = "Cleanup Unused Files";
+                    }
+                })
+                .catch(err => {
+                    alert("Error: " + err);
+                    btn.disabled = false;
+                    btn.innerText = "Cleanup Unused Files";
                 });
         }
 

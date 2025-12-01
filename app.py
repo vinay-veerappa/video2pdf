@@ -409,6 +409,56 @@ def open_folder(video_id):
     else:
         return jsonify({'error': 'Folder not found'}), 404
 
+@app.route('/cleanup/<video_id>', methods=['POST'])
+def cleanup_files(video_id):
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    images_dir = os.path.join(output_folder, "images")
+    
+    if not os.path.exists(output_folder):
+        return jsonify({'error': 'Folder not found'}), 404
+        
+    files_to_delete = []
+    
+    # 1. Raw images in images/ root
+    # files_to_delete.extend(glob.glob(os.path.join(images_dir, "*.png")))
+    # User requested to KEEP raw images for now.
+    
+    # 2. Duplicates
+    dupes_dir = os.path.join(images_dir, "organized_moderate", "duplicates")
+    if os.path.exists(dupes_dir):
+        files_to_delete.extend(glob.glob(os.path.join(dupes_dir, "*")))
+        
+    # 3. Blanks
+    blanks_dir = os.path.join(images_dir, "organized_moderate", "blanks")
+    if os.path.exists(blanks_dir):
+        files_to_delete.extend(glob.glob(os.path.join(blanks_dir, "*")))
+        
+    deleted_count = 0
+    reclaimed_bytes = 0
+    
+    for f in files_to_delete:
+        try:
+            size = os.path.getsize(f)
+            os.remove(f)
+            reclaimed_bytes += size
+            deleted_count += 1
+        except Exception as e:
+            print(f"Error deleting {f}: {e}")
+            
+    # Format size
+    def format_size(size):
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024:
+                return f"{size:.2f} {unit}"
+            size /= 1024
+        return f"{size:.2f} TB"
+        
+    return jsonify({
+        'status': 'success',
+        'deleted_count': deleted_count,
+        'reclaimed_space': format_size(reclaimed_bytes)
+    })
+
 if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
     app.run(debug=True, port=5000)
