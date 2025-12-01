@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curate Slides</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            background: white;
+            padding: 15px;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            z-index: 100;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            padding: 20px 0;
+        }
+
+        .card {
+            border: 4px solid transparent;
+            border-radius: 8px;
+            overflow: hidden;
+            background: white;
+            cursor: pointer;
+            position: relative;
+            transition: all 0.2s;
+        }
+
+        .card img {
+            width: 100%;
+            height: auto;
+            display: block;
+        }
+
+        .card-footer {
+            padding: 8px;
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            font-weight: bold;
+        }
+
+        /* States */
+        .card.keep {
+            border-color: #4CAF50;
+            opacity: 1.0;
+        }
+
+        .card.keep .card-footer {
+            background: #E8F5E9;
+            color: #2E7D32;
+        }
+
+        .card.discard {
+            border-color: #F44336;
+            opacity: 0.6;
+        }
+
+        .card.discard .card-footer {
+            background: #FFEBEE;
+            color: #C62828;
+        }
+
+        .card.blank {
+            border-color: #E91E63;
+            opacity: 0.5;
+        }
+
+        .card.blank .card-footer {
+            background: #FCE4EC;
+            color: #C2185B;
+        }
+
+        .btn {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        /* Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90vh;
+            margin-top: 2vh;
+        }
+
+        .close {
+            position: absolute;
+            top: 15px;
+            right: 35px;
+            color: #f1f1f1;
+            font-size: 40px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <h2>Curate Slides</h2>
+        <div>
+            <span id="count-display">0 kept</span>
+            <button class="btn" onclick="saveAndContinue()">Save & Continue</button>
+        </div>
+    </div>
+
+    <div class="grid" id="grid"></div>
+
+    <!-- Modal -->
+    <div id="imgModal" class="modal">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImg">
+    </div>
+
+    <script>
+        const videoId = "{{ video_id }}";
+        const data = {{ data| tojson }};
+
+        // Process data into a flat list with initial status
+        const blanks = new Set(data.blanks);
+        const duplicates = new Set();
+        data.duplicates.forEach(d => duplicates.add(d.image2));
+
+        const items = data.all_files.map(filename => {
+            let status = 'keep';
+            let reason = 'Unique';
+
+            if (blanks.has(filename)) {
+                status = 'blank';
+                reason = 'Blank';
+            } else if (duplicates.has(filename)) {
+                status = 'discard';
+                reason = 'Duplicate';
+            }
+
+            return { name: filename, status: status, reason: reason };
+        });
+
+        const grid = document.getElementById('grid');
+
+        function render() {
+            grid.innerHTML = '';
+            let keptCount = 0;
+
+            items.forEach((item, index) => {
+                if (item.status === 'keep') keptCount++;
+
+                const card = document.createElement('div');
+                card.className = `card ${item.status}`;
+                card.onclick = (e) => {
+                    if (e.target.tagName === 'IMG') {
+                        openModal(`/image/${videoId}/${item.name}`);
+                    } else {
+                        toggleStatus(index);
+                    }
+                };
+
+                card.innerHTML = `
+                <img src="/image/${videoId}/${item.name}" loading="lazy">
+                <div class="card-footer">
+                    <span>${item.name}</span>
+                    <span>${item.status === 'keep' ? 'KEEP' : item.reason.toUpperCase()}</span>
+                </div>
+            `;
+                grid.appendChild(card);
+            });
+
+            document.getElementById('count-display').innerText = `${keptCount} kept`;
+        }
+
+        function toggleStatus(index) {
+            const item = items[index];
+            if (item.status === 'keep') {
+                item.status = 'discard';
+                item.reason = 'Discarded'; // User manual discard
+            } else {
+                item.status = 'keep';
+            }
+            render(); // Re-render is expensive but simple. For 100 items it's fine.
+            // Optimization: Just update class and text of specific card
+            // But full render ensures sync.
+        }
+
+        function openModal(src) {
+            document.getElementById('modalImg').src = src;
+            document.getElementById('imgModal').style.display = "block";
+        }
+
+        function closeModal() {
+            document.getElementById('imgModal').style.display = "none";
+        }
+
+        function saveAndContinue() {
+            const keeps = items.filter(i => i.status === 'keep').map(i => i.name);
+
+            fetch('/save_curation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_id: videoId, keeps: keeps })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Redirect to Edit page (not implemented yet)
+                        // window.location.href = `/edit/${videoId}`;
+                        alert("Saved! Next step: Edit Transcript (Coming Soon)");
+                    } else {
+                        alert("Error saving");
+                    }
+                });
+        }
+
+        // Initial render
+        render();
+
+    </script>
+
+</body>
+
+</html>
