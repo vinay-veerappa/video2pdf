@@ -349,3 +349,92 @@ def sync_images_with_transcript_docx(images_folder, transcript_file, output_fold
         import traceback
         traceback.print_exc()
         return None
+
+def create_pdf_from_data(slides_data, output_pdf_path):
+    """
+    Create a PDF from a list of slide data objects.
+    slides_data: list of dicts { 'image_path': str, 'text': str, 'timestamp': str }
+    """
+    try:
+        from reportlab.lib.pagesizes import letter
+        from reportlab.lib.units import inch
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Image, PageBreak
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.enums import TA_LEFT
+        from PIL import Image as PILImage
+        import io
+
+        doc = SimpleDocTemplate(output_pdf_path, pagesize=letter)
+        story = []
+        
+        styles = getSampleStyleSheet()
+        timestamp_style = ParagraphStyle(
+            'Timestamp',
+            parent=styles['Normal'],
+            fontSize=10,
+            textColor='#666666',
+            spaceAfter=6,
+            alignment=TA_LEFT
+        )
+        text_style = ParagraphStyle(
+            'TranscriptText',
+            parent=styles['Normal'],
+            fontSize=11,
+            leading=14,
+            spaceAfter=12,
+            alignment=TA_LEFT
+        )
+
+        for slide in slides_data:
+            img_path = slide['image_path']
+            text = slide['text']
+            timestamp = slide.get('timestamp', '')
+
+            # Add Image
+            try:
+                with PILImage.open(img_path) as pil_img:
+                    # Convert to RGB if needed
+                    if pil_img.mode in ('RGBA', 'LA', 'P'):
+                        rgb_img = PILImage.new('RGB', pil_img.size, (255, 255, 255))
+                        if pil_img.mode == 'P':
+                            pil_img = pil_img.convert('RGBA')
+                        rgb_img.paste(pil_img, mask=pil_img.split()[-1] if pil_img.mode == 'RGBA' else None)
+                        pil_img = rgb_img
+                    
+                    # Resize/Compress
+                    max_width = 1600
+                    if pil_img.width > max_width:
+                        ratio = max_width / pil_img.width
+                        new_height = int(pil_img.height * ratio)
+                        pil_img = pil_img.resize((max_width, new_height), PILImage.LANCZOS)
+
+                    img_byte_arr = io.BytesIO()
+                    pil_img.save(img_byte_arr, format='JPEG', quality=60, optimize=True)
+                    img_byte_arr.seek(0)
+                    
+                    img = Image(img_byte_arr, width=6*inch, height=4.5*inch)
+                    story.append(img)
+                    story.append(Spacer(1, 0.2*inch))
+            except Exception as e:
+                print(f"Warning: Could not add image {img_path}: {e}")
+
+            # Add Text
+            if text:
+                if timestamp:
+                    story.append(Paragraph(f"<b>Transcript ({timestamp}):</b>", timestamp_style))
+                story.append(Spacer(1, 0.1*inch))
+                # Handle newlines
+                formatted_text = text.replace('\n', '<br/>')
+                story.append(Paragraph(formatted_text, text_style))
+                story.append(Spacer(1, 0.3*inch))
+            
+            story.append(PageBreak())
+
+        doc.build(story)
+        return output_pdf_path
+
+    except Exception as e:
+        print(f"Error creating PDF from data: {e}")
+        import traceback
+        traceback.print_exc()
+        return None

@@ -10,6 +10,12 @@ from werkzeug.utils import secure_filename
 from config import OUTPUT_DIR
 from utils import is_youtube_url, get_video_id
 from main import main as run_pipeline_cli # We might need to refactor main.py to be importable as a function
+from main import process_video_workflow
+from scripts import image_dedup
+from pdf_generator import create_pdf_from_data
+from utils import parse_image_timestamp, sanitize_filename
+import glob
+import re
 
 app = Flask(__name__)
 app.config['OUTPUT_FOLDER'] = OUTPUT_DIR
@@ -167,6 +173,115 @@ def save_curation():
             shutil.copy2(src, dst)
             
     return jsonify({'status': 'success', 'kept': count_kept})
+
+def prepare_slides_data(video_id):
+    """
+    Sync curated images with transcript and return data for editing.
+    """
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    images_folder = os.path.join(output_folder, "images", "organized_moderate", "unique")
+    
+    # If curated folder doesn't exist, fallback to main images folder (if user skipped curation)
+    if not os.path.exists(images_folder):
+        images_folder = os.path.join(output_folder, "images")
+        
+    # Find transcript
+    transcript_file = None
+    possible_transcripts = glob.glob(os.path.join(output_folder, "transcripts", "*.txt"))
+    possible_transcripts.extend(glob.glob(os.path.join(output_folder, "*.txt")))
+    
+    for t in possible_transcripts:
+        if "cleaned" not in t and "report" not in t and "metadata" not in t:
+            transcript_file = t
+            break
+            
+    if not transcript_file or not os.path.exists(images_folder):
+        return []
+
+    # Parse transcript
+    transcript_entries = []
+    try:
+        with open(transcript_file, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line: continue
+                match = re.match(r'\[(\d{2}:\d{2}:\d{2})\]\s*(.+)', line)
+                if match:
+                    transcript_entries.append((match.group(1), match.group(2)))
+    except:
+        pass
+
+    # Get images
+    image_files = sorted(glob.glob(os.path.join(images_folder, "*.png")))
+    slides = []
+    
+    def timestamp_to_seconds(ts):
+        parts = ts.split(':')
+        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+
+    for img_path in image_files:
+        filename = os.path.basename(img_path)
+        timestamp = parse_image_timestamp(filename)
+        
+        text_segments = []
+        if timestamp and transcript_entries:
+            img_seconds = timestamp_to_seconds(timestamp)
+            
+            # Find text within window (e.g. -5s to +30s)
+            # Or better: between this image and the next image?
+            # For now, let's use the simple window logic from pdf_generator
+            for ts, text in transcript_entries:
+                ts_seconds = timestamp_to_seconds(ts)
+                if abs(ts_seconds - img_seconds) <= 30:
+                    text_segments.append(text)
+        
+        slides.append({
+            'image': filename,
+            'image_path': img_path, # Absolute path for backend
+            'timestamp': timestamp,
+            'text': ' '.join(text_segments)
+        })
+        
+    return slides
+
+@app.route('/edit/<video_id>')
+def edit_transcript(video_id):
+    slides = prepare_slides_data(video_id)
+    return render_template('edit.html', video_id=video_id, slides=slides)
+
+@app.route('/generate', methods=['POST'])
+def generate_pdf():
+    data = request.json
+    video_id = data.get('video_id')
+    slides = data.get('slides')
+    
+    if not video_id or not slides:
+        return jsonify({'error': 'Missing data'}), 400
+        
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    
+    # Reconstruct absolute paths for images because frontend only sends filename
+    # Actually, we passed 'image' (filename) to frontend.
+    # We need to find where they are.
+    # They should be in organized_moderate/unique or images/
+    
+    # Let's check where they are based on prepare_slides_data logic
+    images_folder = os.path.join(output_folder, "images", "organized_moderate", "unique")
+    if not os.path.exists(images_folder):
+        images_folder = os.path.join(output_folder, "images")
+        
+    # Update slides with full paths
+    for slide in slides:
+        slide['image_path'] = os.path.join(images_folder, slide['image'])
+        
+    # Generate PDF
+    pdf_path = os.path.join(output_folder, f"{video_id}_final.pdf")
+    result = create_pdf_from_data(slides, pdf_path)
+    
+    if result:
+        return jsonify({'status': 'success', 'path': result})
+    else:
+        return jsonify({'error': 'Failed to generate PDF'}), 500
 
 if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
