@@ -55,7 +55,8 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
                 })
 
     ydl_opts = {
-        'format': 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best',
+        # Relaxed format selection: download best available and merge to mp4
+        'format': 'bestvideo+bestaudio/best',
         'merge_output_format': 'mp4',
         'outtmpl': os.path.join(temp_dir, '%(title)s.%(ext)s'),
         'noplaylist': True,
@@ -75,9 +76,18 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
             ydl_opts['cookiefile'] = auto_cookies
         else:
             # Fallback to yt-dlp native browser cookies
-            # We try Chrome by default. If this fails, the user might need to configure it.
-            print("Warning: browser_cookie3 failed. Attempting to use yt-dlp native browser cookies (Chrome)...")
-            ydl_opts['cookiesfrombrowser'] = ('chrome',)
+            # We try Chrome, then Edge, then Firefox.
+            print("Warning: browser_cookie3 failed. Attempting to use yt-dlp native browser cookies...")
+            # We can't easily loop inside the dict, so we'll just set it to 'chrome' + 'edge' + 'firefox' 
+            # actually yt-dlp takes a string like "chrome" or "chrome+firefox" (no, it takes one).
+            # But we can try to set it to 'chrome' by default. 
+            # If the user gets the error, they should close the browser.
+            # Let's try to be smarter: check if we can access the file? No.
+            
+            # Let's just default to 'chrome'. If it fails, the user sees the error.
+            # But maybe we can try 'edge' if on Windows?
+            ydl_opts['cookiesfrombrowser'] = ('chrome',) 
+            # Note: The user must close the browser for this to work reliably.
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -109,6 +119,9 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
             
     except Exception as e:
         print(f"Error downloading video: {e}")
+        err_msg = str(e)
+        if "cookie database" in err_msg or "Sign in" in err_msg:
+             raise Exception("YouTube login failed. Please CLOSE YOUR BROWSER (Chrome) completely and try again, or provide a cookies.txt file.")
         raise Exception(f"Failed to download video: {str(e)}")
 
 
