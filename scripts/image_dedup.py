@@ -34,7 +34,11 @@ from sklearn.metrics.pairwise import cosine_similarity
 try:
     import easyocr
     OCR_AVAILABLE = True
-except ImportError:
+except ImportError as e:
+    print(f"⚠ EasyOCR import failed: {e}")
+    OCR_AVAILABLE = False
+except Exception as e:
+    print(f"⚠ EasyOCR initialization error: {e}")
     OCR_AVAILABLE = False
 
 
