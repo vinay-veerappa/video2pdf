@@ -153,7 +153,10 @@
         <h2>Edit Transcript</h2>
         <div>
             <button class="btn btn-secondary" onclick="openSearchModal()">Search & Replace</button>
-            <button class="btn" onclick="generatePDF()">Generate PDF</button>
+            <button class="btn btn-secondary" onclick="preview()">Preview</button>
+            <button id="actionBtn" class="btn" onclick="generateDocuments()">Generate Documents</button>
+            <div id="statusMessage"
+                style="margin-left: 15px; font-weight: bold; color: #28a745; display: inline-block;"></div>
         </div>
     </div>
 
@@ -181,7 +184,7 @@
     <script>
         const videoId = "{{ video_id }}";
         // Data passed from backend: [{image: 'filename', timestamp: '00:00:00', text: '...'}, ...]
-        let slides = JSON.parse('{{ slides|tojson|safe }}');
+        let slides = {{ slides| tojson | safe }};
 
         const container = document.getElementById('slides-container');
 
@@ -232,7 +235,11 @@
                 }
             });
 
-            alert(`Replaced ${count} occurrences.`);
+            // Use status message instead of alert
+            const status = document.getElementById('statusMessage');
+            status.innerText = `Replaced ${count} occurrences.`;
+            setTimeout(() => status.innerText = '', 3000);
+
             closeSearchModal();
         }
 
@@ -240,8 +247,41 @@
             return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
         }
 
-        function generatePDF() {
-            if (!confirm("Are you ready to generate the final PDF?")) return;
+        function preview() {
+            const printWindow = window.open('', '_blank');
+            printWindow.document.write('<html><head><title>Preview</title>');
+            printWindow.document.write('<style>body{font-family:sans-serif;padding:20px;} .slide{display:flex;margin-bottom:20px;page-break-inside:avoid;} .slide img{max-width:300px;margin-right:20px;} .text{flex:1;white-space:pre-wrap;}</style>');
+            printWindow.document.write('</head><body>');
+
+            slides.forEach((slide, index) => {
+                printWindow.document.write(`
+                    <div class="slide">
+                        <img src="/image/${videoId}/organized_moderate/unique/${slide.image}">
+                        <div class="text">
+                            <strong>Slide ${index + 1} (${slide.timestamp})</strong><br>
+                            ${slide.text}
+                        </div>
+                    </div>
+                    <hr>
+                `);
+            });
+
+            printWindow.document.write('</body></html>');
+            printWindow.document.close();
+        }
+
+        function generateDocuments() {
+            if (!confirm("Are you ready to generate the final documents?")) return;
+
+            const btn = document.getElementById('actionBtn');
+            const status = document.getElementById('statusMessage');
+
+            // Update UI to generating state
+            btn.innerText = "Generating...";
+            btn.disabled = true;
+            btn.style.backgroundColor = '#6c757d';
+            status.innerText = "Generating documents, please wait...";
+            status.style.color = "#007bff"; // Blue for processing
 
             fetch('/generate', {
                 method: 'POST',
@@ -251,11 +291,55 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        alert("PDF Generated Successfully! Check the output folder.");
-                        // Optionally redirect to download or view
+                        // Success state
+                        status.innerText = "Documents Generated Successfully!";
+                        status.style.color = "#28a745"; // Green for success
+
+                        // Change button to Open Folder
+                        btn.innerText = "Open Output Folder";
+                        btn.disabled = false;
+                        btn.style.backgroundColor = '#28a745';
+                        btn.style.cursor = 'pointer';
+                        btn.onclick = openFolder; // Change action
+
+                        // Auto open
+                        openFolder();
                     } else {
-                        alert("Error: " + data.error);
+                        // Error state
+                        status.innerText = "Error: " + data.error;
+                        status.style.color = "red";
+
+                        // Reset button
+                        btn.innerText = "Generate Documents";
+                        btn.disabled = false;
+                        btn.style.backgroundColor = '#007bff';
                     }
+                })
+                .catch(err => {
+                    status.innerText = "Network Error: " + err;
+                    status.style.color = "red";
+
+                    // Reset button
+                    btn.innerText = "Generate Documents";
+                    btn.disabled = false;
+                    btn.style.backgroundColor = '#007bff';
+                });
+        }
+
+        function openFolder() {
+            console.log("Attempting to open folder for video:", videoId);
+            fetch(`/open_folder/${videoId}`)
+                .then(res => res.json())
+                .then(data => {
+                    console.log("Open folder response:", data);
+                    if (data.error) {
+                        const status = document.getElementById('statusMessage');
+                        status.innerText = "Error opening folder: " + data.error;
+                        status.style.color = "red";
+                    }
+                })
+                .catch(err => {
+                    console.error("Error calling open_folder:", err);
                 });
         }
 

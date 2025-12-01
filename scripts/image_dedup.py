@@ -1456,7 +1456,7 @@ def parse_arguments():
     parser.add_argument('--threshold', type=int)
     parser.add_argument('--content-threshold', type=int, default=25)
     parser.add_argument('--crop-method', type=str, default='auto')
-    parser.add_argument('--crop-margin', type=float, default=0.20, help="Margin for content_aware crop (0.20 = 20%)")
+    parser.add_argument('--crop-margin', type=float, default=0.20, help="Margin for content_aware crop (0.20 = 20%%)")
     parser.add_argument('--blur', action='store_true')
     parser.add_argument('--no-blur', action='store_true')
     parser.add_argument('--downscale', action='store_true')

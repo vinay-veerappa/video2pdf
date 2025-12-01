@@ -197,7 +197,7 @@
 
     <script>
         const videoId = "{{ video_id }}";
-        const data = JSON.parse('{{ data|tojson|safe }}');
+        const data = {{ data| tojson | safe }};
 
         const blanks = new Set(data.blanks);
         const duplicates = new Set();

@@ -9,13 +9,14 @@ from werkzeug.utils import secure_filename
 # Import our existing logic
 from config import OUTPUT_DIR
 from utils import is_youtube_url, get_video_id
-from main import main as run_pipeline_cli # We might need to refactor main.py to be importable as a function
+from main import main as run_pipeline_cli 
 from main import process_video_workflow
 from scripts import image_dedup
-from pdf_generator import create_pdf_from_data
+from pdf_generator import create_pdf_from_data, create_docx_from_data
 from utils import parse_image_timestamp, sanitize_filename
 import glob
 import re
+import datetime
 
 app = Flask(__name__)
 app.config['OUTPUT_FOLDER'] = OUTPUT_DIR
@@ -189,7 +190,7 @@ def curate(video_id):
         
     return render_template('curate.html', video_id=video_id, data=data)
 
-@app.route('/image/<video_id>/<filename>')
+@app.route('/image/<video_id>/<path:filename>')
 def serve_image(video_id, filename):
     images_dir = os.path.join(app.config['OUTPUT_FOLDER'], video_id, "images")
     return send_from_directory(images_dir, filename)
@@ -283,31 +284,60 @@ def prepare_slides_data(video_id):
     image_files = sorted(glob.glob(os.path.join(images_folder, "*.png")))
     slides = []
     
-    def timestamp_to_seconds(ts):
-        parts = ts.split(':')
-        return int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
-
-    for img_path in image_files:
-        filename = os.path.basename(img_path)
-        timestamp = parse_image_timestamp(filename)
-        
-        text_segments = []
-        if timestamp and transcript_entries:
-            img_seconds = timestamp_to_seconds(timestamp)
+    # Helper to parse timestamp from filename (e.g., "001_12.5.png" -> 12.5)
+    def get_time(fname):
+        try:
+            return float(os.path.basename(fname).split('_')[1].rsplit('.', 1)[0])
+        except:
+            return 0.0
             
-            # Find text within window (e.g. -5s to +30s)
-            # Or better: between this image and the next image?
-            # For now, let's use the simple window logic from pdf_generator
-            for ts, text in transcript_entries:
-                ts_seconds = timestamp_to_seconds(ts)
-                if abs(ts_seconds - img_seconds) <= 30:
-                    text_segments.append(text)
+    # Sort files by timestamp
+    sorted_files = sorted(image_files, key=get_time)
+    
+    # Parse transcript timestamps to seconds
+    parsed_transcript = []
+    for ts, text in transcript_entries:
+        parts = ts.split(':')
+        seconds = int(parts[0]) * 3600 + int(parts[1]) * 60 + int(parts[2])
+        parsed_transcript.append({'start': seconds, 'text': text})
+    
+    # Detect if image timestamps are in minutes or seconds
+    time_multiplier = 1.0
+    if sorted_files and parsed_transcript:
+        max_img_time = get_time(sorted_files[-1])
+        max_trans_time = parsed_transcript[-1]['start']
+        
+        # If max image time is significantly smaller than transcript time, 
+        # and multiplying by 60 brings it closer, assume minutes.
+        # We check if the error with *60 is smaller than error with *1
+        err_seconds = abs(max_img_time - max_trans_time)
+        err_minutes = abs(max_img_time * 60 - max_trans_time)
+        
+        if err_minutes < err_seconds:
+            time_multiplier = 60.0
+            
+    for i, img_path in enumerate(sorted_files):
+        filename = os.path.basename(img_path)
+        current_time = get_time(img_path) * time_multiplier
+        
+        # Determine end time: start of next slide or end of video
+        if i < len(sorted_files) - 1:
+            next_time = get_time(sorted_files[i+1]) * time_multiplier
+        else:
+            next_time = float('inf')
+            
+        # Filter transcript entries
+        slide_text_parts = []
+        for entry in parsed_transcript:
+            # simple logic: if entry start time is >= current slide time and < next slide time
+            if current_time <= entry['start'] < next_time:
+                slide_text_parts.append(entry['text'])
         
         slides.append({
             'image': filename,
-            'image_path': img_path, # Absolute path for backend
-            'timestamp': timestamp,
-            'text': ' '.join(text_segments)
+            'image_path': img_path,
+            'timestamp': str(datetime.timedelta(seconds=int(current_time))),
+            'text': " ".join(slide_text_parts)
         })
         
     return slides
@@ -344,12 +374,34 @@ def generate_pdf():
         
     # Generate PDF
     pdf_path = os.path.join(output_folder, f"{video_id}_final.pdf")
-    result = create_pdf_from_data(slides, pdf_path)
+    pdf_result = create_pdf_from_data(slides, pdf_path)
     
-    if result:
-        return jsonify({'status': 'success', 'path': result})
+    # Generate DOCX
+    docx_path = os.path.join(output_folder, f"{video_id}_final.docx")
+    docx_result = create_docx_from_data(slides, docx_path)
+    
+    if pdf_result or docx_result:
+        return jsonify({
+            'status': 'success', 
+            'pdf_path': pdf_result,
+            'docx_path': docx_result
+        })
     else:
-        return jsonify({'error': 'Failed to generate PDF'}), 500
+        return jsonify({'error': 'Failed to generate documents'}), 500
+
+@app.route('/open_folder/<video_id>')
+def open_folder(video_id):
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    if os.path.exists(output_folder):
+        try:
+            # Force new window with explorer /n,
+            import subprocess
+            subprocess.Popen(['explorer', '/n,', output_folder])
+            return jsonify({'status': 'success'})
+        except Exception as e:
+            return jsonify({'error': str(e)}), 500
+    else:
+        return jsonify({'error': 'Folder not found'}), 404
 
 if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)

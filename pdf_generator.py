@@ -438,3 +438,72 @@ def create_pdf_from_data(slides_data, output_pdf_path):
         import traceback
         traceback.print_exc()
         return None
+def create_docx_from_data(slides_data, output_docx_path):
+    """
+    Create a DOCX from a list of slide data objects.
+    slides_data: list of dicts { 'image_path': str, 'text': str, 'timestamp': str }
+    """
+    try:
+        from docx import Document
+        from docx.shared import Inches
+        from PIL import Image as PILImage
+        import io
+
+        doc = Document()
+
+        for i, slide in enumerate(slides_data):
+            img_path = slide['image_path']
+            text = slide['text']
+            timestamp = slide.get('timestamp', '')
+
+            # Add Image
+            try:
+                with PILImage.open(img_path) as img:
+                    # Convert to RGB if needed
+                    if img.mode in ('RGBA', 'LA', 'P'):
+                        rgb_img = PILImage.new('RGB', img.size, (255, 255, 255))
+                        if img.mode == 'P':
+                            img = img.convert('RGBA')
+                        rgb_img.paste(img, mask=img.split()[-1] if img.mode == 'RGBA' else None)
+                        img = rgb_img
+                    
+                    # Resize/Compress
+                    max_width = 1600
+                    if img.width > max_width:
+                        ratio = max_width / img.width
+                        new_height = int(img.height * ratio)
+                        img = img.resize((max_width, new_height), PILImage.LANCZOS)
+
+                    img_byte_arr = io.BytesIO()
+                    img.save(img_byte_arr, format='JPEG', quality=60, optimize=True)
+                    img_byte_arr.seek(0)
+                    
+                    doc.add_picture(img_byte_arr, width=Inches(6))
+            except Exception as e:
+                print(f"Warning: Could not add image {img_path}: {e}")
+
+            # Add Text
+            if text:
+                p = doc.add_paragraph()
+                if timestamp:
+                    run = p.add_run(f"Transcript ({timestamp}):")
+                    run.bold = True
+                    p.add_run("\n")
+                p.add_run(text)
+            
+            # Add page break if not the last image
+            if i < len(slides_data) - 1:
+                doc.add_page_break()
+
+        doc.save(output_docx_path)
+        return output_docx_path
+
+    except ImportError as e:
+        print(f"Error: Missing required library. Please install: pip install python-docx")
+        print(f"Error details: {e}")
+        return None
+    except Exception as e:
+        print(f"Error creating DOCX from data: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
