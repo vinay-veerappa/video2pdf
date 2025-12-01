@@ -6,6 +6,7 @@ import subprocess
 import shutil
 import glob
 import sys
+import re
 from config import (
     VAR_THRESHOLD, DETECT_SHADOWS, MIN_TIME_BETWEEN_CAPTURES, 
     MAX_SIMILARITY_COMPARISONS
@@ -82,33 +83,50 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
             'message': "Extracting frames from video..."
         })
     
+    timestamps = []
+    
     try:
-        # FFmpeg command: extract at frame_rate, resize to max 1920 width
-        # -vf "fps=1,scale='min(1920,iw)':-1"
-        # We use min(1920,iw) to avoid upscaling if video is smaller
+        # FFmpeg command: Optimized I-Frame extraction using -skip_frame nokey
+        # We add 'showinfo' filter to get exact timestamps of extracted frames
         
         cmd = [
             "ffmpeg",
+            "-skip_frame", "nokey", # Skip non-keyframes (must be before -i)
             "-hwaccel", "cuda", # Explicitly use NVIDIA CUDA
             "-i", video_path,
-            "-vf", f"fps={frame_rate},scale='min(1920,iw)':-2", 
-            "-vsync", "0",
-            "-q:v", "2", # High quality JPEG for temp (faster) or use PNG
-            # Let's use PNG for accuracy as requested, but maybe compression level 1 for speed
-            "-compression_level", "1",
+            "-vf", "scale='min(1920,iw)':-2,showinfo", # Resize and show info
+            "-vsync", "vfr", # Variable frame rate for I-frames
+            "-q:v", "2", # High quality JPEG/PNG
+            "-compression_level", "1", # Low compression for speed
             os.path.join(temp_extract_dir, "%05d.png")
         ]
         
-        # Check if ffmpeg is in path, otherwise try to find it or fail gracefully
-        # We assume it is since we checked earlier.
-        try:
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        except subprocess.CalledProcessError:
-            print("Warning: CUDA acceleration failed. Falling back to CPU extraction.")
-            # Remove -hwaccel cuda and retry
-            cmd = [c for c in cmd if c not in ["-hwaccel", "cuda"]]
-            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Run and capture stderr for timestamps
+        result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
         
+        # Parse timestamps
+        # [Parsed_showinfo_0 @ ...] n:   0 pts:      0 pts_time:0       pos:      0 ...
+        regex = re.compile(r"pts_time:([0-9\.]+)")
+        for line in result.stderr.splitlines():
+            if "pts_time:" in line and "showinfo" in line:
+                match = regex.search(line)
+                if match:
+                    timestamps.append(float(match.group(1)))
+                    
+    except subprocess.CalledProcessError:
+        print("Warning: CUDA acceleration failed. Falling back to CPU extraction.")
+        # Remove -hwaccel cuda and retry
+        cmd = [c for c in cmd if c not in ["-hwaccel", "cuda"]]
+        result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+        
+        # Parse timestamps again
+        regex = re.compile(r"pts_time:([0-9\.]+)")
+        for line in result.stderr.splitlines():
+            if "pts_time:" in line and "showinfo" in line:
+                match = regex.search(line)
+                if match:
+                    timestamps.append(float(match.group(1)))
+
     except (subprocess.CalledProcessError, FileNotFoundError) as e:
         print(f"Error: FFmpeg extraction failed: {e}")
         raise Exception("FFmpeg extraction failed. Please ensure FFmpeg is installed and working.")
@@ -116,6 +134,11 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
     # 2. Process extracted frames (Simple Rename & Move)
     extracted_files = sorted(glob.glob(os.path.join(temp_extract_dir, "*.png")))
     print(f"Extracted {len(extracted_files)} frames. Moving to output folder...")
+    
+    # Verify timestamp count
+    if len(timestamps) != len(extracted_files):
+        print(f"Warning: Timestamp count ({len(timestamps)}) does not match file count ({len(extracted_files)}). Falling back to estimated timestamps.")
+        timestamps = [] # Fallback
     
     screenshots_count = 0
     total_frames = len(extracted_files)
@@ -131,7 +154,11 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
             })
             
         # Calculate timestamp
-        frame_time = i / frame_rate
+        if timestamps:
+            frame_time = timestamps[i]
+        else:
+            # Fallback (incorrect for I-frames but better than crashing)
+            frame_time = i / frame_rate
         
         # Rename and move
         # We trust image_dedup.py to do the actual deduplication later

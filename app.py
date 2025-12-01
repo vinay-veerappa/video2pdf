@@ -433,17 +433,41 @@ def cleanup_files(video_id):
     if os.path.exists(blanks_dir):
         files_to_delete.extend(glob.glob(os.path.join(blanks_dir, "*")))
         
+    # 4. Cropped for comparison folder
+    cropped_dir = os.path.join(images_dir, "cropped_for_comparison")
+    if os.path.exists(cropped_dir):
+        # We handle directories differently, but let's just list all files in it for the count
+        # or just remove the tree and count it as 1 "item" or try to count files.
+        # Let's count files for stats then remove tree.
+        cropped_files = glob.glob(os.path.join(cropped_dir, "*"))
+        files_to_delete.extend(cropped_files)
+        # We also need to remove the directory itself later
+        
+    # 5. Report file
+    report_file = os.path.join(images_dir, "duplicates_report_combined.html")
+    if os.path.exists(report_file):
+        files_to_delete.append(report_file)
+        
     deleted_count = 0
     reclaimed_bytes = 0
     
     for f in files_to_delete:
         try:
-            size = os.path.getsize(f)
-            os.remove(f)
-            reclaimed_bytes += size
-            deleted_count += 1
+            if os.path.isfile(f):
+                size = os.path.getsize(f)
+                os.remove(f)
+                reclaimed_bytes += size
+                deleted_count += 1
         except Exception as e:
             print(f"Error deleting {f}: {e}")
+            
+    # Remove the cropped directory if it exists and is empty (or just try rmdir)
+    if os.path.exists(cropped_dir):
+        try:
+            os.rmdir(cropped_dir) # Should be empty now
+        except:
+            import shutil
+            shutil.rmtree(cropped_dir, ignore_errors=True)
             
     # Format size
     def format_size(size):
