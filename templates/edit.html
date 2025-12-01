@@ -181,7 +181,7 @@
     <script>
         const videoId = "{{ video_id }}";
         // Data passed from backend: [{image: 'filename', timestamp: '00:00:00', text: '...'}, ...]
-        let slides = {{ slides| tojson }};
+        let slides = JSON.parse('{{ slides|tojson|safe }}');
 
         const container = document.getElementById('slides-container');
 

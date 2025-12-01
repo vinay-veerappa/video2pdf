@@ -150,7 +150,7 @@
 
     <script>
         const videoId = "{{ video_id }}";
-        const data = {{ data| tojson }};
+        const data = JSON.parse('{{ data|tojson|safe }}');
 
         // Process data into a flat list with initial status
         const blanks = new Set(data.blanks);
