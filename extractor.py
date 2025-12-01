@@ -66,6 +66,12 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
 
     for frame_count, frame_time, frame in get_frames(video_path, frame_rate):
         orig = frame.copy()
+        
+        # Resize if video is larger than 1080p (1920px width)
+        # This improves processing speed and reduces disk usage without hurting OCR
+        if orig.shape[1] > 1920:
+            orig = imutils.resize(orig, width=1920)
+            
         frame_resized = imutils.resize(frame, width=600)
         mask = fgbg.apply(frame_resized)
 
