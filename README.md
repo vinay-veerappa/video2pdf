@@ -1,21 +1,4 @@
 # Video to Document Converter (Video2PDF)
-
-A powerful tool to convert video presentations (YouTube or local) into high-quality PDF and DOCX documents. It captures unique slides, synchronizes them with the video transcript, and optimizes the output for sharing.
-
-## Features
-
-*   **Web Interface**: Easy-to-use web UI for managing the entire workflow.
-*   **Video Processing**: Downloads videos and transcripts directly from YouTube.
-*   **Smart Slide Extraction**: Uses Structural Similarity Index (SSIM) and Deep Learning (ResNet) to detect and extract unique slides.
-*   **Interactive Curation**: Review and select slides to keep using a visual interface.
-*   **Document Generation**:
-    *   **PDF**: Creates a visual slide deck.
-    *   **DOCX**: Generates a Word document with slides and their corresponding transcript text.
-*   **Smart Deduplication**: Automatically detects duplicate slides and blanks, even with video conference UI elements (Zoom/Teams bars).
-
-## Installation
-
-1.  Clone the repository.
 2.  Install the required dependencies:
     ```bash
     pip install -r requirements.txt
