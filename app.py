@@ -53,7 +53,12 @@ def list_videos():
                     'name': name,
                     'has_video': has_video,
                     'has_images': has_images,
-                    'has_dedup': has_dedup
+                    'has_dedup': has_dedup,
+                    'has_transcript': any(
+                        len(glob.glob(os.path.join(path, "transcripts", f"*{ext}"))) > 0 or 
+                        len(glob.glob(os.path.join(path, f"*{ext}"))) > 0 
+                        for ext in ['.txt', '.vtt', '.srt', '.json', '.xml']
+                    )
                 })
     
     return jsonify(projects)
@@ -68,6 +73,7 @@ def process_video():
     skip_download = data.get('skip_download') == 'true'
     skip_extraction = data.get('skip_extraction') == 'true'
     skip_deduplication = data.get('skip_deduplication') == 'true'
+    download_transcript = data.get('download_transcript') == 'true'
     
     if not url and not existing_video_id:
         return jsonify({'error': 'No URL or Existing Video provided'}), 400
@@ -76,7 +82,7 @@ def process_video():
     job_id = "job_" + str(len(JOBS) + 1)
     JOBS[job_id] = {'status': 'processing', 'log': [], 'message': 'Starting...', 'percent': 0}
     
-    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication))
+    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication, download_transcript))
     thread.start()
     
     return jsonify({'job_id': job_id})
@@ -91,7 +97,7 @@ from scripts import image_dedup
 from main import process_video_workflow
 from scripts import image_dedup
 
-def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False, skip_deduplication=False):
+def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False, skip_deduplication=False, download_transcript=True):
     """
     Run the extraction and deduplication pipeline.
     """
@@ -122,6 +128,24 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
                 if videos:
                     input_source = videos[0] # Use the local file path
                     print(f"Using existing video file: {input_source}")
+                    
+                    # If we need to download transcript, we need the original URL
+                    if download_transcript:
+                        metadata_path = os.path.join(app.config['OUTPUT_FOLDER'], existing_video_id, "metadata.txt")
+                        if os.path.exists(metadata_path):
+                            try:
+                                with open(metadata_path, 'r', encoding='utf-8') as f:
+                                    for line in f:
+                                        if line.startswith("url:"):
+                                            original_url = line.replace("url:", "").strip()
+                                            if original_url:
+                                                print(f"Found original URL in metadata: {original_url}")
+                                                # Use URL as input source to allow transcript download
+                                                # main.py will skip video download if skip_extraction is True
+                                                input_source = original_url
+                                            break
+                            except Exception as e:
+                                print(f"Error reading metadata: {e}")
                 else:
                     # Maybe only images exist?
                     # If we skip extraction, we don't strictly need the video file if images are there.
@@ -140,7 +164,8 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
             progress_callback=progress_callback,
             cookies=cookies_path,
             skip_download=skip_download,
-            skip_extraction=skip_extraction
+            skip_extraction=skip_extraction,
+            download_transcript=download_transcript
         )
         
         images_folder = result['images_folder']
@@ -304,8 +329,10 @@ def prepare_slides_data(video_id):
         
     # Find transcript
     transcript_file = None
-    possible_transcripts = glob.glob(os.path.join(output_folder, "transcripts", "*.txt"))
-    possible_transcripts.extend(glob.glob(os.path.join(output_folder, "*.txt")))
+    possible_transcripts = []
+    for ext in ['*.txt', '*.vtt', '*.srt', '*.json', '*.xml']:
+        possible_transcripts.extend(glob.glob(os.path.join(output_folder, "transcripts", ext)))
+        possible_transcripts.extend(glob.glob(os.path.join(output_folder, ext)))
     
     for t in possible_transcripts:
         if "cleaned" not in t and "report" not in t and "metadata" not in t:

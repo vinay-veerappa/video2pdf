@@ -252,7 +252,7 @@ Examples:
         # Download transcript if requested and it's a YouTube URL
         transcript_vtt = None
         transcript_txt = None
-        if args.download_transcript and is_youtube and not args.skip_extraction:
+        if args.download_transcript and is_youtube:
             transcript_vtt, transcript_txt = download_youtube_transcript(
                 input_source,
                 output_folder,
@@ -567,7 +567,7 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
     # Download transcript
     transcript_vtt = None
     transcript_txt = None
-    if options['download_transcript'] and is_youtube and not options['skip_extraction']:
+    if options['download_transcript'] and is_youtube:
         transcript_vtt, transcript_txt = download_youtube_transcript(
             input_source,
             output_folder,
@@ -579,8 +579,10 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
     # Find existing transcript
     if not transcript_txt:
         transcripts_folder = os.path.join(output_folder, "transcripts")
-        possible_transcripts = glob.glob(os.path.join(transcripts_folder, "*.txt"))
-        possible_transcripts.extend(glob.glob(os.path.join(output_folder, "*.txt")))
+        possible_transcripts = []
+        for ext in ['*.txt', '*.vtt', '*.srt', '*.json', '*.xml']:
+            possible_transcripts.extend(glob.glob(os.path.join(transcripts_folder, ext)))
+            possible_transcripts.extend(glob.glob(os.path.join(output_folder, ext)))
         for t in possible_transcripts:
             filename = os.path.basename(t)
             if "cleaned" not in filename and "report" not in filename and "info" not in filename and "metadata" not in filename:
