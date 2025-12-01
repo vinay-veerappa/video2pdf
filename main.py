@@ -487,5 +487,150 @@ Examples:
         sys.exit(1)
 
 
+def process_video_workflow(input_source, output_dir=OUTPUT_DIR, **kwargs):
+    """
+    Programmatic entry point for the video processing workflow.
+    Returns: Dictionary with results (output_folder, images_folder, etc.)
+    """
+    # Default options
+    options = {
+        'frame_rate': FRAME_RATE,
+        'min_percent': MIN_PERCENT,
+        'max_percent': MAX_PERCENT,
+        'similarity_threshold': SIMILARITY_THRESHOLD,
+        'no_similarity': False,
+        'min_time_interval': MIN_TIME_BETWEEN_CAPTURES,
+        'download_transcript': True,
+        'transcript_lang': 'en',
+        'prefer_auto_subs': False,
+        'skip_extraction': False,
+        'optimize_images': False,
+        'similarity_method': 'grid',
+        'cookies': None,
+        'save_duplicates': False
+    }
+    options.update(kwargs)
+    
+    # Ensure output directory exists
+    os.makedirs(output_dir, exist_ok=True)
+    
+    video_path = None
+    video_name = None
+    
+    # Check if input is YouTube URL or local file
+    is_youtube = is_youtube_url(input_source)
+    if is_youtube:
+        print("Detected YouTube URL")
+        video_name = get_video_title(input_source)
+        if not options['skip_extraction']:
+            video_path = download_youtube_video(input_source, output_dir, cookies_path=options['cookies'])
+        else:
+            print("Skipping video download (--skip-extraction)")
+    else:
+        print("Detected local video file")
+        video_name = Path(input_source).stem
+        if not options['skip_extraction']:
+            if not os.path.exists(input_source):
+                raise FileNotFoundError(f"Video file not found: {input_source}")
+            video_path = input_source
+        else:
+            print("Skipping video check (--skip-extraction)")
+    
+    print(f"\nProcessing video: {video_name}")
+    
+    # Initialize output folders
+    output_folder, images_folder = initialize_output_folder(video_name, output_dir)
+    
+    # Create video folder
+    video_output_folder = os.path.join(output_folder, "video")
+    os.makedirs(video_output_folder, exist_ok=True)
+    
+    # Move metadata file
+    if video_path and os.path.exists(video_path):
+        temp_metadata = os.path.join(os.path.dirname(video_path), "metadata.txt")
+        if os.path.exists(temp_metadata):
+            import shutil
+            final_metadata = os.path.join(output_folder, "metadata.txt")
+            shutil.copy2(temp_metadata, final_metadata)
+    
+    # Create duplicates folder
+    duplicates_folder = None
+    if options['save_duplicates']:
+        duplicates_folder = os.path.join(output_folder, "duplicates")
+        os.makedirs(duplicates_folder, exist_ok=True)
+    
+    # Download transcript
+    transcript_vtt = None
+    transcript_txt = None
+    if options['download_transcript'] and is_youtube and not options['skip_extraction']:
+        transcript_vtt, transcript_txt = download_youtube_transcript(
+            input_source,
+            output_folder,
+            lang=options['transcript_lang'],
+            prefer_auto=options['prefer_auto_subs'],
+            cookies_path=options['cookies']
+        )
+    
+    # Find existing transcript
+    if not transcript_txt:
+        transcripts_folder = os.path.join(output_folder, "transcripts")
+        possible_transcripts = glob.glob(os.path.join(transcripts_folder, "*.txt"))
+        possible_transcripts.extend(glob.glob(os.path.join(output_folder, "*.txt")))
+        for t in possible_transcripts:
+            filename = os.path.basename(t)
+            if "cleaned" not in filename and "report" not in filename and "info" not in filename and "metadata" not in filename:
+                transcript_txt = t
+                break
+
+    # Detect unique screenshots
+    screenshots_count = 0
+    if not options['skip_extraction']:
+        screenshots_count = detect_unique_screenshots(
+            video_path,
+            images_folder,
+            frame_rate=options['frame_rate'],
+            min_percent=options['min_percent'],
+            max_percent=options['max_percent'],
+            use_similarity=not options['no_similarity'],
+            similarity_threshold=options['similarity_threshold'],
+            min_time_interval=options['min_time_interval'],
+            save_duplicates_path=duplicates_folder,
+            similarity_method=options['similarity_method']
+        )
+    else:
+        existing_images = glob.glob(os.path.join(images_folder, "*.png"))
+        screenshots_count = len(existing_images)
+    
+        'screenshots_count': screenshots_count
+    }
+
+    # Save video file if it exists in temp or was downloaded
+    if video_path and os.path.exists(video_path):
+        # Check if it's in the temp folder (meaning we downloaded it)
+        # If it's a local file provided by user, we don't move it unless requested
+        # But here we assume if we downloaded it (is_youtube), we want to save it.
+        if is_youtube:
+            try:
+                video_filename = os.path.basename(video_path)
+                final_video_path = os.path.join(video_output_folder, video_filename)
+                if not os.path.exists(final_video_path):
+                    shutil.copy2(video_path, final_video_path)
+                    print(f"Video saved to: {final_video_path}")
+            except Exception as e:
+                print(f"Warning: Could not save video file: {e}")
+
+    # Cleanup temp files
+    cleanup_temp_files(output_dir)
+
+    return {
+        'video_name': video_name,
+        'output_folder': output_folder,
+        'images_folder': images_folder,
+        'transcript_txt': transcript_txt,
+        'screenshots_count': screenshots_count
+    }
+
+
+
 if __name__ == "__main__":
     main()
