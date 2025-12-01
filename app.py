@@ -57,7 +57,28 @@ def run_processing_task(job_id, url):
     Run the extraction and deduplication pipeline.
     """
     try:
-        JOBS[job_id]['status'] = 'starting'
+        JOBS[job_id]['percent'] = 0
+        JOBS[job_id]['message'] = "Starting process..."
+        
+        def progress_callback(data):
+            JOBS[job_id].update(data)
+
+        # Check for cookies.txt in root
+        cookies_path = None
+        if os.path.exists('cookies.txt'):
+            cookies_path = os.path.abspath('cookies.txt')
+            print(f"Found cookies.txt at {cookies_path}")
+        
+        # 1. Run Extraction
+        result = process_video_workflow(
+            url, 
+            output_dir=app.config['OUTPUT_FOLDER'],
+            progress_callback=progress_callback,
+            cookies=cookies_path
+        )
+        
+        images_folder = result['images_folder']
+        video_name = result['video_name']
         
         JOBS[job_id]['status'] = 'analyzing'
         
