@@ -50,7 +50,7 @@
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            grid-template-columns: repeat(auto-fill, minmax(var(--card-width, 240px), 1fr));
             gap: 20px;
             padding-bottom: 40px;
         }
@@ -193,7 +193,12 @@
                 <div class="shortcuts-hint">Space: Toggle | Arrows: Move | Enter: View</div>
             </div>
         </div>
-        <div>
+        <div style="display: flex; align-items: center;">
+            <div style="display: flex; align-items: center; gap: 10px; margin-right: 20px;">
+                <label for="sizeSlider" style="font-size: 12px; font-weight: 600; color: #64748b;">Size</label>
+                <input type="range" id="sizeSlider" min="150" max="600" value="240" oninput="updateGridSize(this.value)"
+                    style="width: 100px;">
+            </div>
             <span id="count-display" style="margin-right: 15px; font-weight: 600;">0 kept</span>
             <button class="btn" onclick="saveAndContinue()">Save & Continue</button>
         </div>
@@ -296,6 +301,10 @@
                     if (data.status === 'success') window.location.href = `/edit/${videoId}`;
                     else alert("Error saving");
                 });
+        }
+
+        function updateGridSize(val) {
+            document.documentElement.style.setProperty('--card-width', val + 'px');
         }
 
         // Keyboard Shortcuts

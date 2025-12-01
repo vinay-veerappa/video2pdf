@@ -203,12 +203,17 @@
 
         function render() {
             container.innerHTML = '';
+            if (slides.length === 0) {
+                container.innerHTML = '<div style="text-align:center; padding:50px; color:#666;">No slides found. Please check if images were extracted and curated.</div>';
+                return;
+            }
+
             slides.forEach((slide, index) => {
                 const row = document.createElement('div');
                 row.className = 'slide-row';
                 row.innerHTML = `
                 <div class="slide-img">
-                    <img src="/image/${videoId}/organized_moderate/unique/${slide.image}" loading="lazy">
+                    <img src="${slide.image_url}" loading="lazy">
                 </div>
                 <div class="slide-content">
                     <div class="slide-meta">Slide ${index + 1} • Timestamp: ${slide.timestamp}</div>
@@ -218,6 +223,9 @@
                 container.appendChild(row);
             });
         }
+
+        // Call render immediately
+        render();
 
         function updateText(index, value) {
             slides[index].text = value;
@@ -269,7 +277,7 @@
             slides.forEach((slide, index) => {
                 printWindow.document.write(`
                     <div class="slide">
-                        <img src="/image/${videoId}/organized_moderate/unique/${slide.image}">
+                        <img src="${slide.image_url}">
                         <div class="text">
                             <strong>Slide ${index + 1} (${slide.timestamp})</strong><br>
                             ${slide.text}

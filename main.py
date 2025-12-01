@@ -590,6 +590,18 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
     # Detect unique screenshots
     screenshots_count = 0
     if not options['skip_extraction']:
+        # If user explicitly wants to extract (unchecked skip_extraction),
+        # remove existing images to force re-extraction
+        if os.path.exists(images_folder):
+            existing_images = glob.glob(os.path.join(images_folder, "*.png"))
+            if existing_images:
+                print(f"Removing {len(existing_images)} existing images to force re-extraction...")
+                for img in existing_images:
+                    try:
+                        os.remove(img)
+                    except Exception as e:
+                        print(f"Warning: Could not remove {img}: {e}")
+        
         screenshots_count = detect_unique_screenshots(
             video_path,
             images_folder,

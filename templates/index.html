@@ -304,10 +304,6 @@
             const infoDiv = document.getElementById('projectInfo');
 
             if (project) {
-                // Auto-check boxes based on status
-                document.getElementById('skipDownload').checked = project.has_video;
-                document.getElementById('skipExtraction').checked = project.has_images;
-
                 let badges = '';
                 if (project.has_video) badges += '<span class="badge badge-green">Video</span>';
                 else badges += '<span class="badge badge-gray">No Video</span>';
@@ -315,9 +311,13 @@
                 if (project.has_images) badges += '<span class="badge badge-green">Images</span>';
                 else badges += '<span class="badge badge-gray">No Images</span>';
 
-                if (project.has_dedup) badges += '<span class="badge badge-green">Analyzed</span>';
+                if (project.has_dedup) badges += '<span class="badge badge-green">Deduped</span>';
 
                 infoDiv.innerHTML = badges;
+
+                // Auto-select options
+                document.getElementById('skipDownload').checked = project.has_video;
+                document.getElementById('skipExtraction').checked = project.has_images;
             } else {
                 infoDiv.innerHTML = '';
                 document.getElementById('skipDownload').checked = false;

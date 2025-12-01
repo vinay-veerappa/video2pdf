@@ -67,15 +67,16 @@ def process_video():
     # Flags
     skip_download = data.get('skip_download') == 'true'
     skip_extraction = data.get('skip_extraction') == 'true'
+    skip_deduplication = data.get('skip_deduplication') == 'true'
     
     if not url and not existing_video_id:
         return jsonify({'error': 'No URL or Existing Video provided'}), 400
         
     # Start processing in a background thread
     job_id = "job_" + str(len(JOBS) + 1)
-    JOBS[job_id] = {'status': 'processing', 'log': []}
+    JOBS[job_id] = {'status': 'processing', 'log': [], 'message': 'Starting...', 'percent': 0}
     
-    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction))
+    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication))
     thread.start()
     
     return jsonify({'job_id': job_id})
@@ -90,7 +91,7 @@ from scripts import image_dedup
 from main import process_video_workflow
 from scripts import image_dedup
 
-def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False):
+def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False, skip_deduplication=False):
     """
     Run the extraction and deduplication pipeline.
     """
@@ -146,29 +147,57 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
         video_name = result['video_name']
         
         JOBS[job_id]['status'] = 'analyzing'
+        JOBS[job_id]['message'] = 'Starting image analysis and deduplication...'
+        JOBS[job_id]['percent'] = 75
         
-        # 2. Run Deduplication (Curator Grid Generation)
-        # We use the 'compare-all' mode logic from image_dedup.py
-        # But we need to call it programmatically.
-        
-        # We can use subprocess or import. Since we are in the same env, import is better.
-        # However, image_dedup.py is designed as a script. 
-        # Let's use subprocess to be safe and consistent with CLI.
-        import subprocess
-        
-        cmd = [
-            sys.executable,
-            os.path.join(os.path.dirname(__file__), "scripts", "image_dedup.py"),
-            images_folder,
-            "--mode", "compare-all",
-            "--sequential",
-            "--crop-method", "content_aware",
-            "--crop-margin", "0.20"
-        ]
-        
-        subprocess.run(cmd, check=True)
+        if not skip_deduplication:
+            # We use the 'compare-all' mode logic from image_dedup.py
+            # But we need to call it programmatically.
+            
+            # We can use subprocess or import. Since we are in the same env, import is better.
+            # However, image_dedup.py is designed as a script. 
+            # Let's use subprocess to be safe and consistent with CLI.
+            import subprocess
+            
+            print(f"Running deduplication on {images_folder}...")
+            JOBS[job_id]['message'] = 'Analyzing images for duplicates and blanks...'
+            
+            cmd = [
+                sys.executable,
+                os.path.join(os.path.dirname(__file__), "scripts", "image_dedup.py"),
+                images_folder,
+                "--mode", "compare-all",
+                "--sequential",
+                "--crop-method", "content_aware",
+                "--crop-margin", "0.20"
+            ]
+            
+            subprocess.run(cmd, check=True)
+            
+            JOBS[job_id]['message'] = 'Deduplication complete!'
+            JOBS[job_id]['percent'] = 95
+        else:
+            print("Skipping deduplication as requested.")
+            JOBS[job_id]['message'] = 'Deduplication skipped - generating dummy results...'
+            JOBS[job_id]['percent'] = 85
+            # Generate dummy dedup_results.json so curation page works
+            # We treat all images as unique/kept for now, or just list them.
+            # curate.html expects: { 'blanks': [], 'duplicates': [], 'all_files': [...] }
+            all_files = sorted([os.path.basename(f) for f in glob.glob(os.path.join(images_folder, "*.png"))])
+            dummy_results = {
+                'blanks': [],
+                'duplicates': [],
+                'all_files': all_files
+            }
+            json_path = os.path.join(images_folder, "dedup_results.json")
+            with open(json_path, 'w') as f:
+                json.dump(dummy_results, f)
+            print(f"Created dummy results at {json_path}")
+            JOBS[job_id]['percent'] = 95
         
         JOBS[job_id]['status'] = 'ready_for_curation'
+        JOBS[job_id]['message'] = 'Ready for curation!'
+        JOBS[job_id]['percent'] = 100
         JOBS[job_id]['video_id'] = video_name # This is the folder name
         
     except Exception as e:
@@ -178,15 +207,34 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
 
 @app.route('/curate/<video_id>')
 def curate(video_id):
+    # Flask automatically URL-decodes route parameters
     # Load the JSON results
     images_dir = os.path.join(app.config['OUTPUT_FOLDER'], video_id, "images")
     json_path = os.path.join(images_dir, "dedup_results.json")
     
     if not os.path.exists(json_path):
-        return "Error: Deduplication results not found.", 404
+        # Fallback: Generate dummy data if missing
+        # This handles cases where deduplication was skipped or failed, but images exist.
+        glob_pattern = os.path.join(images_dir, "*.png")
+        all_files = sorted([os.path.basename(f) for f in glob.glob(glob_pattern)])
         
-    with open(json_path, 'r') as f:
-        data = json.load(f)
+        if not all_files:
+             return "Error: No images found for this video.", 404
+             
+        data = {
+            'blanks': [],
+            'duplicates': [],
+            'all_files': all_files
+        }
+        # Optionally save it to avoid re-generating
+        try:
+            with open(json_path, 'w') as f:
+                json.dump(data, f)
+        except Exception as e:
+            pass # If we can't write, just use the in-memory data
+    else:
+        with open(json_path, 'r') as f:
+            data = json.load(f)
         
     return render_template('curate.html', video_id=video_id, data=data)
 
@@ -291,6 +339,16 @@ def prepare_slides_data(video_id):
         except:
             return 0.0
             
+    # Calculate relative path for URL generation
+    # images_folder is absolute path to where images were found
+    # We serve images from /image/<video_id>/<path> which maps to output/<video_id>/images/<path>
+    images_root = os.path.join(output_folder, "images")
+    rel_path = os.path.relpath(images_folder, images_root)
+    if rel_path == ".":
+        rel_path = ""
+    # Ensure forward slashes for URL
+    rel_path = rel_path.replace("\\", "/")
+            
     # Sort files by timestamp
     sorted_files = sorted(image_files, key=get_time)
     
@@ -333,8 +391,15 @@ def prepare_slides_data(video_id):
             if current_time <= entry['start'] < next_time:
                 slide_text_parts.append(entry['text'])
         
+        # Construct URL
+        if rel_path:
+            img_url = f"/image/{video_id}/{rel_path}/{filename}"
+        else:
+            img_url = f"/image/{video_id}/{filename}"
+
         slides.append({
             'image': filename,
+            'image_url': img_url,
             'image_path': img_path,
             'timestamp': str(datetime.timedelta(seconds=int(current_time))),
             'text': " ".join(slide_text_parts)
@@ -485,4 +550,4 @@ def cleanup_files(video_id):
 
 if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
-    app.run(debug=True, port=5000)
+    app.run(debug=True, use_reloader=False, port=5000)
