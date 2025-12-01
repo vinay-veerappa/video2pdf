@@ -91,7 +91,7 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
             if use_similarity and previous_hashes:
                 for prev_hash in previous_hashes:
                     dist = calculate_hamming_distance(current_hash, prev_hash)
-                    if dist <= 5:  # Threshold for "very similar" (0-5 bits different out of 64)
+                    if dist <= 2:  # Threshold for "very similar" (0-2 bits different out of 64)
                         should_save = False
                         # print(f"Frame {frame_count} skipped (dHash distance: {dist})")
                         break
