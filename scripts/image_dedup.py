@@ -1746,8 +1746,7 @@ if __name__ == "__main__":
         print(f"  DUPLICATES: {len(duplicates)}")
         print(f"  UNIQUE:     {len(all_image_paths) - len(blanks) - len(duplicates)}")
         print(f"\nCheck the report: {report_path}")
-        print("\nACTION REQUIRED: Open the HTML report, select the images to move, and click 'Download Move Script'.")
-        print("Run the downloaded .bat file to organize the images.")
+        print("Ready for curation in the web interface.")
         
     # Single run
     else:
