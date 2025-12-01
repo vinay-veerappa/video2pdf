@@ -134,30 +134,56 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
     from scripts.optimize_images import process_images
     process_images(images_folder, images_optimized, crop=True, compress=False, format='png')
     
-    # Step 3: Run analysis
+    # Step 3: Run analysis (Deduplication)
     print("\n" + "="*70)
-    print("STEP 3: Analyzing Images for Duplicates")
+    print("STEP 3: Analyzing Images for Duplicates (Curator Grid)")
     print("="*70)
-    from analyzer import analyze_images_comprehensive
     
-    analysis_result = analyze_images_comprehensive(
-        images_optimized,
-        similarity_threshold=0.8,
-        output_folder=reports_folder,
-        move_duplicates=False,
-        similarity_method='grid'
-    )
+    # Define paths for new workflow
+    # We assume 'moderate' mode is the default for the new script
+    curated_folder = os.path.join(video_folder, "images_optimized", "organized_moderate", "unique")
+    report_path = os.path.join(images_optimized, "duplicates_report_combined.html")
     
-    if analysis_result:
-        print(f"\nAnalysis Summary:")
-        print(f"  - {len(analysis_result['irrelevant'])} potentially irrelevant images")
-        print(f"  - {len(analysis_result['duplicates'])} duplicate groups")
+    # Check if curation has already been done (i.e., unique folder exists)
+    if os.path.exists(curated_folder) and os.listdir(curated_folder):
+        print(f"Found curated images in: {curated_folder}")
+        print("Proceeding with PDF generation using curated images.")
+        # Update images_optimized to point to the curated folder for the next steps
+        images_to_use = curated_folder
+    else:
+        print("Running deduplication analysis...")
+        # Import the new deduplication script
+        from scripts import image_dedup
         
-        if analysis_result['irrelevant']:
-            print("\nFlagged irrelevant images:")
-            for img in analysis_result['irrelevant']:
-                print(f"  - {img['filename']} ({img['reason']})")
-    
+        # Run deduplication (Hash 12, Sequential)
+        # We can call the main processing function directly or via subprocess
+        # Calling via subprocess is safer to avoid global state issues with argparse
+        import subprocess
+        
+        cmd = [
+            sys.executable,
+            os.path.join(os.path.dirname(__file__), "image_dedup.py"),
+            images_optimized,
+            "--mode", "compare-all",
+            "--sequential",
+            "--crop-method", "content_aware",
+            "--crop-margin", "0.20"
+        ]
+        
+        print(f"Executing: {' '.join(cmd)}")
+        subprocess.run(cmd, check=True)
+        
+        print("\n" + "!"*70)
+        print("ACTION REQUIRED: Curation Needed")
+        print("!"*70)
+        print(f"1. Open the report: {report_path}")
+        print("2. Review images, select 'Keep' or 'Discard'.")
+        print("3. Click 'Download Move Script' in the report.")
+        print("4. Run the downloaded .bat file (e.g., move_files_moderate.bat) in the images folder.")
+        print("5. RERUN this workflow script to generate the final PDF.")
+        print("!"*70)
+        return
+
     # Step 4: Generate final PDF with transcript
     print("\n" + "="*70)
     print("STEP 4: Generating Final PDF")
@@ -169,7 +195,7 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         # Use optimized PDF generator with transcript
         from scripts.create_optimized_pdf import create_optimized_pdf_with_transcript
         create_optimized_pdf_with_transcript(
-            images_optimized,
+            images_to_use,
             transcript_path,
             final_pdf,
             jpeg_quality=quality
@@ -179,7 +205,7 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         print("Generating PDF without transcript...")
         from pdf_generator import convert_screenshots_to_pdf
         video_name = os.path.basename(video_folder)
-        convert_screenshots_to_pdf(images_optimized, video_folder, video_name)
+        convert_screenshots_to_pdf(images_to_use, video_folder, video_name)
         # Rename to final.pdf
         generated_pdf = os.path.join(video_folder, f"{video_name}.pdf")
         if os.path.exists(generated_pdf):
@@ -196,7 +222,7 @@ def run_complete_workflow(video_folder, youtube_url=None, quality=70):
         from pdf_generator import sync_images_with_transcript_docx
         # Use optimized images for DOCX as well
         sync_images_with_transcript_docx(
-            images_optimized,
+            images_to_use,
             transcript_path,
             video_folder
         )
