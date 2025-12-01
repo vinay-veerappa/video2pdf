@@ -397,9 +397,9 @@ def open_folder(video_id):
     
     if os.path.exists(output_folder):
         try:
-            # Force new window with explorer /n,
+            # Force new window with explorer /n
             import subprocess
-            subprocess.Popen(['explorer', '/n,', output_folder])
+            subprocess.Popen(['explorer', '/n', output_folder])
             return jsonify({'status': 'success'})
         except Exception as e:
             return jsonify({'error': str(e)}), 500
