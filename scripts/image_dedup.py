@@ -7,7 +7,20 @@ Supports: Perceptual hashing, Histogram comparison, and Deep Learning
 import os
 import sys
 import argparse
+import json
 import numpy as np
+
+class NumpyEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        if isinstance(obj, np.bool_):
+            return bool(obj)
+        return super(NumpyEncoder, self).default(obj)
 from pathlib import Path
 from collections import defaultdict
 from PIL import Image, ImageDraw, ImageFilter
@@ -1629,7 +1642,18 @@ if __name__ == "__main__":
         
         all_results = {'moderate': duplicates}
         
-        # 4. Generate Report
+        # 4. Save JSON Results (for Web App)
+        json_results = {
+            'blanks': [b['name'] for b in blanks],
+            'duplicates': duplicates,
+            'all_files': [p.name for p in all_image_paths]
+        }
+        json_path = IMAGE_DIR / "dedup_results.json"
+        with open(json_path, 'w') as f:
+            json.dump(json_results, f, indent=2, cls=NumpyEncoder)
+        print(f"Saved JSON results to: {json_path}")
+
+        # 5. Generate Report
         report_path = IMAGE_DIR / "duplicates_report_combined.html"
         create_combined_report(all_results, IMAGE_DIR, report_path, sequential=True, blanks=blanks)
         

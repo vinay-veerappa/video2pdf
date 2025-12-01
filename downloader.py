@@ -13,6 +13,16 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
     """
     print(f"Downloading video from YouTube: {url}")
     
+    # Check if video already exists in the persistent 'video' subfolder
+    video_subfolder = os.path.join(output_dir, 'video')
+    if os.path.exists(video_subfolder):
+        existing_files = [f for f in os.listdir(video_subfolder) if f.endswith(('.mp4', '.mkv', '.webm'))]
+        if existing_files:
+            print(f"Video already exists: {existing_files[0]}")
+            if progress_callback:
+                progress_callback({'status': 'downloaded', 'percent': 100, 'message': 'Video already downloaded.'})
+            return os.path.join(video_subfolder, existing_files[0])
+    
     # Create temp directory for downloads
     temp_dir = os.path.join(output_dir, "temp")
     os.makedirs(temp_dir, exist_ok=True)

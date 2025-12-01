@@ -55,6 +55,19 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
     """
     start_time = time.time()
     
+    # Check if images already exist in output folder
+    if os.path.exists(output_folder_screenshot_path):
+        existing_images = glob.glob(os.path.join(output_folder_screenshot_path, "*.png"))
+        if len(existing_images) > 0:
+            print(f"Images already exist in {output_folder_screenshot_path}. Skipping extraction.")
+            if progress_callback:
+                progress_callback({
+                    'status': 'finished',
+                    'percent': 100,
+                    'message': "Images already extracted."
+                })
+            return output_folder_screenshot_path
+
     # 1. Extract ALL frames to a temp directory using FFmpeg (Fast!)
     temp_extract_dir = os.path.join(os.path.dirname(output_folder_screenshot_path), "temp_extracted")
     if os.path.exists(temp_extract_dir):
@@ -76,6 +89,7 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
         
         cmd = [
             "ffmpeg",
+            "-hwaccel", "auto", # Use GPU if available
             "-i", video_path,
             "-vf", f"fps={frame_rate},scale='min(1920,iw)':-2", 
             "-vsync", "0",

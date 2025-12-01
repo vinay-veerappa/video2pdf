@@ -5,11 +5,32 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Curate Slides</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --border-radius: 12px;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --keep-border: #22c55e;
+            --keep-bg: #f0fdf4;
+            --keep-text: #15803d;
+            --discard-border: #ef4444;
+            --discard-bg: #fef2f2;
+            --discard-text: #b91c1c;
+            --blank-border: #eab308;
+            --blank-bg: #fefce8;
+            --blank-text: #854d0e;
+        }
+
         body {
-            font-family: sans-serif;
+            font-family: 'Inter', sans-serif;
             padding: 20px;
-            background: #f5f5f5;
+            background: var(--bg);
+            color: var(--text);
         }
 
         .header {
@@ -18,87 +39,111 @@
             align-items: center;
             position: sticky;
             top: 0;
-            background: white;
-            padding: 15px;
-            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            background: rgba(255, 255, 255, 0.9);
+            backdrop-filter: blur(8px);
+            padding: 15px 20px;
+            box-shadow: var(--shadow);
             z-index: 100;
+            border-radius: var(--border-radius);
+            margin-bottom: 20px;
         }
 
         .grid {
             display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-            gap: 15px;
-            padding: 20px 0;
+            grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+            gap: 20px;
+            padding-bottom: 40px;
         }
 
         .card {
-            border: 4px solid transparent;
-            border-radius: 8px;
+            border: 3px solid transparent;
+            border-radius: var(--border-radius);
             overflow: hidden;
-            background: white;
+            background: var(--card-bg);
             cursor: pointer;
             position: relative;
-            transition: all 0.2s;
+            transition: all 0.2s ease;
+            box-shadow: var(--shadow);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1);
+        }
+
+        .card.selected {
+            outline: 4px solid var(--primary);
+            outline-offset: 2px;
         }
 
         .card img {
             width: 100%;
             height: auto;
             display: block;
+            aspect-ratio: 16/9;
+            object-fit: cover;
         }
 
         .card-footer {
-            padding: 8px;
-            font-size: 12px;
+            padding: 12px;
+            font-size: 13px;
             display: flex;
             justify-content: space-between;
-            font-weight: bold;
+            font-weight: 600;
         }
 
         .card.keep {
-            border-color: #4CAF50;
-            opacity: 1.0;
+            border-color: var(--keep-border);
         }
 
         .card.keep .card-footer {
-            background: #E8F5E9;
-            color: #2E7D32;
+            background: var(--keep-bg);
+            color: var(--keep-text);
         }
 
         .card.discard {
-            border-color: #F44336;
-            opacity: 0.6;
+            border-color: var(--discard-border);
+            opacity: 0.7;
         }
 
         .card.discard .card-footer {
-            background: #FFEBEE;
-            color: #C62828;
+            background: var(--discard-bg);
+            color: var(--discard-text);
         }
 
         .card.blank {
-            border-color: #E91E63;
-            opacity: 0.5;
+            border-color: var(--blank-border);
+            opacity: 0.6;
         }
 
         .card.blank .card-footer {
-            background: #FCE4EC;
-            color: #C2185B;
+            background: var(--blank-bg);
+            color: var(--blank-text);
         }
 
         .btn {
-            padding: 10px 20px;
-            background: #007bff;
+            padding: 10px 24px;
+            background: var(--primary);
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 16px;
+            font-size: 15px;
+            font-weight: 500;
+            transition: background 0.2s;
         }
 
         .btn:hover {
-            background: #0056b3;
+            background: var(--primary-hover);
         }
 
+        .shortcuts-hint {
+            font-size: 12px;
+            color: #64748b;
+            margin-right: 15px;
+        }
+
+        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -116,15 +161,15 @@
             max-width: 90%;
             max-height: 90vh;
             margin-top: 2vh;
+            border-radius: 8px;
         }
 
         .close {
             position: absolute;
-            top: 15px;
-            right: 35px;
-            color: #f1f1f1;
+            top: 20px;
+            right: 30px;
+            color: white;
             font-size: 40px;
-            font-weight: bold;
             cursor: pointer;
         }
     </style>
@@ -133,16 +178,18 @@
 <body>
 
     <div class="header">
-        <h2>Curate Slides</h2>
         <div>
-            <span id="count-display">0 kept</span>
+            <h2 style="margin:0">Curate Slides</h2>
+            <div class="shortcuts-hint">Space: Toggle | Arrows: Move | Enter: View</div>
+        </div>
+        <div>
+            <span id="count-display" style="margin-right: 15px; font-weight: 600;">0 kept</span>
             <button class="btn" onclick="saveAndContinue()">Save & Continue</button>
         </div>
     </div>
 
     <div class="grid" id="grid"></div>
 
-    <!-- Modal -->
     <div id="imgModal" class="modal">
         <span class="close" onclick="closeModal()">&times;</span>
         <img class="modal-content" id="modalImg">
@@ -152,7 +199,6 @@
         const videoId = "{{ video_id }}";
         const data = JSON.parse('{{ data|tojson|safe }}');
 
-        // Process data into a flat list with initial status
         const blanks = new Set(data.blanks);
         const duplicates = new Set();
         data.duplicates.forEach(d => duplicates.add(d.image2));
@@ -160,19 +206,13 @@
         const items = data.all_files.map(filename => {
             let status = 'keep';
             let reason = 'Unique';
-
-            if (blanks.has(filename)) {
-                status = 'blank';
-                reason = 'Blank';
-            } else if (duplicates.has(filename)) {
-                status = 'discard';
-                reason = 'Duplicate';
-            }
-
+            if (blanks.has(filename)) { status = 'blank'; reason = 'Blank'; }
+            else if (duplicates.has(filename)) { status = 'discard'; reason = 'Duplicate'; }
             return { name: filename, status: status, reason: reason };
         });
 
         const grid = document.getElementById('grid');
+        let selectedIndex = -1;
 
         function render() {
             grid.innerHTML = '';
@@ -182,12 +222,14 @@
                 if (item.status === 'keep') keptCount++;
 
                 const card = document.createElement('div');
-                card.className = `card ${item.status}`;
+                card.className = `card ${item.status} ${index === selectedIndex ? 'selected' : ''}`;
+                card.id = `card-${index}`;
                 card.onclick = (e) => {
-                    if (e.target.tagName === 'IMG') {
-                        openModal(`/image/${videoId}/${item.name}`);
-                    } else {
+                    if (e.target.tagName === 'IMG') openModal(`/image/${videoId}/${item.name}`);
+                    else {
+                        selectedIndex = index;
                         toggleStatus(index);
+                        render(); // Re-render to show selection and status change
                     }
                 };
 
@@ -202,17 +244,24 @@
             });
 
             document.getElementById('count-display').innerText = `${keptCount} kept`;
+
+            // Scroll selected into view if needed
+            if (selectedIndex !== -1) {
+                const el = document.getElementById(`card-${selectedIndex}`);
+                if (el) {
+                    // Optional: el.scrollIntoView({behavior: "smooth", block: "nearest"});
+                }
+            }
         }
 
         function toggleStatus(index) {
             const item = items[index];
             if (item.status === 'keep') {
                 item.status = 'discard';
-                item.reason = 'Discarded'; // User manual discard
+                item.reason = 'Discarded';
             } else {
                 item.status = 'keep';
             }
-            render();
         }
 
         function openModal(src) {
@@ -226,7 +275,6 @@
 
         function saveAndContinue() {
             const keeps = items.filter(i => i.status === 'keep').map(i => i.name);
-
             fetch('/save_curation', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -234,19 +282,43 @@
             })
                 .then(res => res.json())
                 .then(data => {
-                    if (data.status === 'success') {
-                        window.location.href = `/edit/${videoId}`;
-                    } else {
-                        alert("Error saving");
-                    }
+                    if (data.status === 'success') window.location.href = `/edit/${videoId}`;
+                    else alert("Error saving");
                 });
         }
 
-        // Initial render
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('imgModal').style.display === 'block') {
+                if (e.key === 'Escape') closeModal();
+                return;
+            }
+
+            if (selectedIndex === -1 && items.length > 0) selectedIndex = 0;
+
+            const cols = Math.floor(grid.clientWidth / 260); // Approx columns
+
+            if (e.key === 'ArrowRight') selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            else if (e.key === 'ArrowLeft') selectedIndex = Math.max(selectedIndex - 1, 0);
+            else if (e.key === 'ArrowDown') selectedIndex = Math.min(selectedIndex + cols, items.length - 1);
+            else if (e.key === 'ArrowUp') selectedIndex = Math.max(selectedIndex - cols, 0);
+            else if (e.key === ' ') {
+                e.preventDefault();
+                toggleStatus(selectedIndex);
+            }
+            else if (e.key === 'Enter') {
+                openModal(`/image/${videoId}/${items[selectedIndex].name}`);
+            }
+
+            render();
+
+            // Ensure visible
+            const el = document.getElementById(`card-${selectedIndex}`);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+
         render();
-
     </script>
-
 </body>
 
 </html>
