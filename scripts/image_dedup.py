@@ -15,16 +15,6 @@ import imagehash
 import cv2
 from sklearn.metrics.pairwise import cosine_similarity
 
-# Deep learning imports (optional)
-try:
-    import torch
-    from torchvision import models, transforms
-    DEEP_LEARNING_AVAILABLE = True
-except ImportError:
-    DEEP_LEARNING_AVAILABLE = True
-except ImportError:
-    DEEP_LEARNING_AVAILABLE = False
-
 # OCR import (optional)
 try:
     import easyocr
@@ -319,17 +309,26 @@ def check_graphics_content(img, entropy=None, debug_path=None):
         return False, 0, ""
 
 
-def get_image_files(image_dir, exclude_folders=None):
+def get_image_files(image_dir, exclude_folders=None, recursive=False):
     """Get list of image files, excluding output folders."""
     if exclude_folders is None:
-        exclude_folders = ['cropped_for_comparison', 'crop_visualizations', 'report', 'processed', '__pycache__']
+        exclude_folders = ['cropped_for_comparison', 'crop_visualizations', 'report', 'processed', '__pycache__', 'debug_crops']
     
     image_extensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp']
     image_files = []
     
-    for img_path in sorted(Path(image_dir).rglob('*')):
+    # Use glob('*') by default (non-recursive) to avoid picking up output folders
+    # Only use rglob if recursive=True
+    iterator = Path(image_dir).rglob('*') if recursive else Path(image_dir).glob('*')
+    
+    for img_path in sorted(iterator):
+        if not img_path.is_file():
+            continue
+            
+        # Check excludes (important even for non-recursive if folders are in the list)
         if any(excluded in img_path.parts for excluded in exclude_folders):
             continue
+            
         if img_path.suffix.lower() in image_extensions:
             image_files.append(img_path)
     
@@ -612,19 +611,31 @@ def detect_ui_regions(img, debug=False):
     return (0, top_crop, width, bottom_crop)
 
 
-def smart_crop_video_conference(img, method='auto', debug=False):
-    """Intelligently crop video conference artifacts."""
+def get_crop_box(img, method='auto', margin=0.10, debug=False):
+    """Get the crop box (left, top, right, bottom) for the given method."""
     width, height = img.size
     
     if method == 'auto':
-        crop_box = detect_ui_regions(img, debug)
-        return img.crop(crop_box)
+        return detect_ui_regions(img, debug)
+    elif method == 'content_aware':
+        # Crop to center region based on margin (default 20% -> 0.20)
+        left = int(width * margin)
+        top = int(height * margin)
+        right = int(width * (1 - margin))
+        bottom = int(height * (1 - margin))
+        return (left, top, right, bottom)
     elif method == 'conservative':
-        return img.crop((0, int(height * 0.05), width, int(height * 0.90)))
+        return (0, int(height * 0.05), width, int(height * 0.90))
     elif method == 'aggressive':
-        return img.crop((0, int(height * 0.08), width, int(height * 0.85)))
+        return (0, int(height * 0.08), width, int(height * 0.85))
     else:
-        return img
+        return (0, 0, width, height)
+
+
+def smart_crop_video_conference(img, method='auto', margin=0.10, debug=False):
+    """Intelligently crop video conference artifacts."""
+    crop_box = get_crop_box(img, method, margin, debug)
+    return img.crop(crop_box)
 
 
 def compute_multi_scale_hash(img):
@@ -658,35 +669,84 @@ def compare_images_smart(img1_data, img2_data, threshold=12, hist_thresh=0.90):
     avg_dist = sum(distances.values()) / len(distances)
     hist_sim = compute_histogram_similarity(img1, img2)
     
-    is_dup = (min_dist <= threshold or hist_sim >= hist_thresh or 
-              (avg_dist <= threshold + 3 and hist_sim >= hist_thresh - 0.05))
+    # Entropy-Aware Threshold Adjustment
+    # Calculate entropy for both images (using grayscale)
+    def get_entropy(img):
+        gray = np.array(img.convert('L'))
+        hist = np.histogram(gray, bins=256)[0]
+        hist = hist[hist > 0]
+        hist = hist / hist.sum()
+        return -np.sum(hist * np.log2(hist))
+
+    entropy1 = get_entropy(img1)
+    entropy2 = get_entropy(img2)
+    avg_entropy = (entropy1 + entropy2) / 2
+    
+    # Adjust threshold based on entropy
+    # Low entropy (simple slides) -> Stricter (Lower threshold)
+    # High entropy (complex photos) -> Lenient (Higher threshold)
+    adjusted_threshold = threshold
+    if avg_entropy < 4.0:
+        adjusted_threshold = max(threshold - 3, 5) # Stricter for simple images
+    elif avg_entropy > 7.0:
+        adjusted_threshold = threshold + 3 # More lenient for complex images
+        
+    # Logic Refinement:
+    # 1. Strong Match: Min distance is very low AND histogram is decent
+    # 2. Histogram Match: Histogram is very high (colors are identical)
+    # 3. Average Match: All hashes agree reasonably well
+    
+    is_min_match = min_dist <= adjusted_threshold
+    
+    # Safety: If relying on min_dist (single hash) and average is high (hashes disagree),
+    # we MUST have strong histogram confirmation.
+    if is_min_match and avg_dist > adjusted_threshold:
+        if hist_sim < 0.85:
+            is_min_match = False
+            
+    is_hist_match = hist_sim >= hist_thresh
+    is_avg_match = avg_dist <= adjusted_threshold + 3 and hist_sim >= hist_thresh - 0.05
+    
+    
+    is_dup = is_min_match or is_hist_match or is_avg_match
+    
+    match_reasons = []
+    if is_min_match: match_reasons.append("Hash")
+    if is_hist_match: match_reasons.append("Hist")
+    if is_avg_match: match_reasons.append("AvgHash")
     
     return {
         'is_duplicate': is_dup,
-        'min_distance': min_dist,
-        'avg_distance': avg_dist,
+        'score': min_dist, # Renamed from min_distance
+        'avg_score': avg_dist, # Renamed from avg_distance
         'histogram_similarity': hist_sim,
-        'distances': distances
+        'distances': distances,
+        'entropy': avg_entropy,
+        'adjusted_threshold': adjusted_threshold,
+        'reason': "+".join(match_reasons) if is_dup else "None"
     }
 
 
-def find_duplicates_with_smart_crop(image_dir, crop_method='auto', threshold=12, 
-                                     histogram_threshold=0.90, use_blur=True, 
-                                     downscale=True, save_crops=False, debug=False):
-    """Find duplicates using smart cropping."""
-    print(f"=== DUPLICATE DETECTION ===")
-    print(f"Threshold: {threshold}, Blur: {use_blur}, Downscale: {downscale}\n")
+def find_duplicates_with_smart_crop(image_dir, threshold=10, blur_enabled=True, downscale=False, sequential=False, file_list=None):
+    """
+    Find duplicate images using smart cropping and perceptual hashing.
+    """
+    print("=== DUPLICATE DETECTION ===")
+    print(f"Threshold: {threshold}, Blur: {blur_enabled}, Downscale: {downscale}")
+    print(f"Method: {'Sequential (Optimized)' if sequential else 'Pairwise (O(N^2))'}")
     
-    image_paths = get_image_files(image_dir)
-    if not image_paths:
-        return [], []
-    
-    print(f"Processing {len(image_paths)} images...\n")
+    if file_list:
+        image_paths = file_list
+        print(f"Processing {len(image_paths)} provided images...")
+    else:
+        image_paths = get_image_files(image_dir)
+        if not image_paths:
+            return [], []
+        print(f"Processing {len(image_paths)} images...\n")
     
     images_data = []
-    crop_dir = Path(image_dir) / 'cropped_for_comparison' if save_crops else None
-    if save_crops and crop_dir:
-        crop_dir.mkdir(exist_ok=True)
+    crop_dir = Path(image_dir) / 'cropped_for_comparison' # Always save crops for combined report
+    crop_dir.mkdir(exist_ok=True)
     
     for idx, img_path in enumerate(image_paths, 1):
         try:
@@ -694,28 +754,29 @@ def find_duplicates_with_smart_crop(image_dir, crop_method='auto', threshold=12,
                 print(f"  Progress: {idx}/{len(image_paths)}")
             
             img = Image.open(img_path)
-            cropped = smart_crop_video_conference(img, method=crop_method)
+            cropped = smart_crop_video_conference(img, method='auto') # Always auto crop
             processed = cropped.copy()
             
-            if use_blur:
+            if blur_enabled:
                 processed = processed.filter(ImageFilter.GaussianBlur(radius=2))
             if downscale:
                 w, h = processed.size
                 processed = processed.resize((w//2, h//2), Image.LANCZOS)
             
             crop_path_str = None
-            if save_crops and crop_dir:
-                crop_path = crop_dir / f"cropped_{img_path.name}"
-                cropped.save(crop_path)
-                crop_path_str = str(crop_path)
+            crop_path = crop_dir / f"cropped_{img_path.name}"
+            cropped.save(crop_path)
+            crop_path_str = str(crop_path)
             
             hashes = compute_multi_scale_hash(processed)
             
+            # Store data for comparison
+            # IMPORTANT: Store 'cropped' (raw crop) for SSIM/ResNet calculation
             images_data.append({
                 'path': str(img_path),
                 'name': img_path.name,
-                'cropped': cropped,
-                'processed': processed,
+                'cropped': cropped,  # Raw cropped image
+                'processed': processed, # Processed image for hashing
                 'hashes': hashes,
                 'crop_path': crop_path_str
             })
@@ -726,25 +787,61 @@ def find_duplicates_with_smart_crop(image_dir, crop_method='auto', threshold=12,
     print("Comparing images...\n")
     
     duplicates = []
-    for i in range(len(images_data)):
-        for j in range(i + 1, len(images_data)):
-            comp = compare_images_smart(images_data[i], images_data[j], threshold, histogram_threshold)
-            if comp['is_duplicate']:
-                duplicates.append({
-                    'image1': images_data[i]['name'],
-                    'image2': images_data[j]['name'],
-                    'path1': images_data[i]['path'],
-                    'path2': images_data[j]['path'],
-                    'crop_path1': images_data[i]['crop_path'],
-                    'crop_path2': images_data[j]['crop_path'],
-                    **comp
-                })
     
-    print(f"Found {len(duplicates)} duplicate pairs\n")
+    if sequential:
+        # Optimized Sequential Logic: O(N)
+        # Compare current image against a reference. 
+        # If duplicate -> mark as duplicate of reference, continue.
+        # If different -> new image becomes reference.
+        if len(images_data) > 0:
+            current_ref_idx = 0
+            for i in range(1, len(images_data)):
+                # Use a fixed histogram threshold for this function, e.g., 0.90
+                comp = compare_images_smart(images_data[current_ref_idx], images_data[i], threshold, hist_thresh=0.90)
+                
+                if comp['is_duplicate']:
+                    # It is a duplicate of the current reference
+                    print(f"Pair {len(duplicates)+1}: {images_data[current_ref_idx]['name']} ↔ {images_data[i]['name']}")
+                    print(f"  Reason: {comp['reason']} | Dist: {comp['score']}, Hist: {comp['histogram_similarity']:.3f}")
+                    
+                    duplicates.append({
+                        'image1': images_data[current_ref_idx]['name'],
+                        'image2': images_data[i]['name'],
+                        'path1': images_data[current_ref_idx]['path'],
+                        'path2': images_data[i]['path'],
+                        'crop_path1': images_data[current_ref_idx]['crop_path'],
+                        'crop_path2': images_data[i]['crop_path'],
+                        **comp
+                    })
+                else:
+                    # It is different, so it becomes the new reference
+                    current_ref_idx = i
+                    
+        print(f"Found {len(duplicates)} duplicate pairs (Sequential Scan)\n")
+        
+    else:
+        # Standard All-vs-All Logic: O(N^2)
+        for i in range(len(images_data)):
+            for j in range(i + 1, len(images_data)):
+                # Use a fixed histogram threshold for this function, e.g., 0.90
+                comp = compare_images_smart(images_data[i], images_data[j], threshold, hist_thresh=0.90)
+                if comp['is_duplicate']:
+                    duplicates.append({
+                        'image1': images_data[i]['name'],
+                        'image2': images_data[j]['name'],
+                        'path1': images_data[i]['path'],
+                        'path2': images_data[j]['path'],
+                        'crop_path1': images_data[i]['crop_path'],
+                        'crop_path2': images_data[j]['crop_path'],
+                        **comp
+                    })
+        print(f"Found {len(duplicates)} duplicate pairs (out of {len(images_data) * (len(images_data)-1) // 2} possible pairs)\n")
+    
+    print(f"Found {len(duplicates)} duplicate pairs (out of {len(images_data) * (len(images_data)-1) // 2} possible pairs)\n")
     
     for idx, dup in enumerate(duplicates, 1):
         print(f"Pair {idx}: {dup['image1']} ↔ {dup['image2']}")
-        print(f"  Distance: {dup['min_distance']}, Histogram: {dup['histogram_similarity']:.3f}\n")
+        print(f"  Distance: {dup['score']}, Histogram: {dup['histogram_similarity']:.3f}\n")
     
     return duplicates, images_data
 
@@ -778,63 +875,116 @@ def keep_best_from_duplicates(duplicates, keep_strategy='first'):
     return recs
 
 
-def create_duplicate_pairs_report(duplicates, output_dir, filename='duplicates_report.html'):
+def create_duplicate_pairs_report(duplicates, output_dir, filename='duplicates_report.html', sequential=False):
     """
-    Create an HTML report showing detected duplicate pairs side-by-side.
-    Uses cropped images if available.
+    Create an HTML report showing detected duplicate pairs.
+    If sequential=True, groups duplicates by the original reference image.
     """
     html_parts = [
         '<html><head><style>',
         'body { font-family: Arial; margin: 20px; background: #f5f5f5; }',
         '.pair { background: white; margin: 20px 0; border: 1px solid #ddd; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
+        '.group { background: white; margin: 20px 0; border: 1px solid #ddd; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
         '.images { display: flex; justify-content: space-around; align-items: center; }',
+        '.group-images { display: flex; flex-wrap: wrap; gap: 15px; }',
         '.image-container { text-align: center; width: 45%; }',
+        '.ref-container { text-align: center; width: 300px; border: 2px solid #2196F3; padding: 10px; background: #e3f2fd; }',
+        '.dup-container { text-align: center; width: 250px; border: 1px solid #f44336; padding: 10px; background: #ffebee; }',
         'img { max-width: 100%; height: auto; border: 1px solid #eee; }',
-        '.metrics { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 0.9em; }',
+        '.metrics { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 0.8em; text-align: left; }',
         '.metric-bad { color: #d32f2f; font-weight: bold; }',
         '.metric-good { color: #388e3c; font-weight: bold; }',
         'h1 { color: #333; }',
         'h3 { margin-top: 0; color: #555; }',
         '.note { color: #666; font-style: italic; font-size: 0.9em; margin-bottom: 10px; }',
         '</style></head><body>',
-        f'<h1>Duplicate Pairs Report ({len(duplicates)} pairs)</h1>',
+        f'<h1>Duplicate Report ({len(duplicates)} matches found)</h1>',
         '<p class="note">Note: Showing cropped images used for comparison. If cropped images are not available, original images are shown.</p>'
     ]
-    
-    # Sort duplicates by similarity (lower distance is better)
-    sorted_dups = sorted(duplicates, key=lambda x: x['avg_distance'])
-    
-    for i, dup in enumerate(sorted_dups, 1):
-        # Determine which paths to use (cropped if available, else original)
-        path1 = dup.get('crop_path1') or dup['path1']
-        path2 = dup.get('crop_path2') or dup['path2']
-        is_cropped = bool(dup.get('crop_path1') and dup.get('crop_path2'))
-        
-        # Calculate relative path for images
-        try:
-            # Try to make paths relative to the report file
-            rel_path1 = os.path.relpath(path1, output_dir)
-            rel_path2 = os.path.relpath(path2, output_dir)
-        except ValueError:
-            # Fallback to absolute paths if on different drives
-            rel_path1 = Path(path1).as_uri()
-            rel_path2 = Path(path2).as_uri()
+
+    if sequential:
+        # Group by Original (image1)
+        from collections import defaultdict
+        groups = defaultdict(list)
+        for dup in duplicates:
+            groups[dup['image1']].append(dup)
             
-        html_parts.append(f'<div class="pair">')
-        html_parts.append(f'<h3>Pair #{i}: {dup["image1"]} vs {dup["image2"]}</h3>')
+        html_parts.append(f'<h2>Sequential Duplicate Groups ({len(groups)} unique slides found)</h2>')
         
-        html_parts.append('<div class="images">')
-        html_parts.append(f'<div class="image-container"><img src="{rel_path1}" alt="{dup["image1"]}"><p>{dup["image1"]}{" (Cropped)" if is_cropped else ""}</p></div>')
-        html_parts.append(f'<div class="image-container"><img src="{rel_path2}" alt="{dup["image2"]}"><p>{dup["image2"]}{" (Cropped)" if is_cropped else ""}</p></div>')
-        html_parts.append('</div>')
+        for ref_name, dups in groups.items():
+            # Get paths from the first duplicate entry
+            ref_path = dups[0].get('crop_path1') or dups[0]['path1']
+            try:
+                rel_ref_path = os.path.relpath(ref_path, output_dir)
+            except ValueError:
+                rel_ref_path = Path(ref_path).as_uri()
+            
+            # Create verification string
+            dup_names = [d['image2'] for d in dups]
+            verify_str = f"{ref_name}, {', '.join(dup_names)}"
+            
+            html_parts.append(f'<div style="background:#333; color:#fff; padding:10px; border-radius:4px; margin-bottom:15px; font-family:monospace; font-size:0.8em; overflow-x:auto;">')
+            html_parts.append(f'<strong>Verify this group:</strong><br>')
+            html_parts.append(f'python scripts/image_dedup.py "{output_dir}" --verify "{verify_str}" --mode moderate')
+            html_parts.append(f'</div>')
+            
+            html_parts.append('<div class="group-images">')
+            
+            # Original Image
+            html_parts.append(f'<div class="ref-container"><strong>ORIGINAL (KEEP)</strong><br><img src="{rel_ref_path}"><br>{ref_name}</div>')
+            
+            # Duplicate Images
+            for dup in dups:
+                dup_path = dup.get('crop_path2') or dup['path2']
+                try:
+                    rel_dup_path = os.path.relpath(dup_path, output_dir)
+                except ValueError:
+                    rel_dup_path = Path(dup_path).as_uri()
+                    
+                html_parts.append(f'<div class="dup-container"><strong>DUPLICATE (REMOVE)</strong><br><img src="{rel_dup_path}"><br>{dup["image2"]}')
+                html_parts.append('<div class="metrics">')
+                html_parts.append(f'Dist: {dup["min_distance"]} | Hist: {dup["histogram_similarity"]:.3f}<br>')
+                html_parts.append(f'Hash: {", ".join(f"{k}={v}" for k, v in dup["distances"].items())}')
+                html_parts.append('</div></div>')
+                
+            html_parts.append('</div></div>')
+            
+    else:
+        # Standard Pairwise Report
+        # Sort duplicates by similarity (lower distance is better)
+        sorted_dups = sorted(duplicates, key=lambda x: x['avg_distance'])
         
-        html_parts.append('<div class="metrics">')
-        html_parts.append(f'<strong>Average Distance:</strong> <span class="metric-good">{dup["avg_distance"]:.2f}</span> (Lower is more similar)<br>')
-        html_parts.append(f'<strong>Histogram Similarity:</strong> <span class="metric-good">{dup["histogram_similarity"]:.3f}</span> (Higher is more similar)<br>')
-        html_parts.append(f'<strong>Hash Distances:</strong> {", ".join(f"{k}={v}" for k, v in dup["distances"].items())}')
-        html_parts.append('</div>')
-        
-        html_parts.append('</div>')
+        for i, dup in enumerate(sorted_dups, 1):
+            # Determine which paths to use (cropped if available, else original)
+            path1 = dup.get('crop_path1') or dup['path1']
+            path2 = dup.get('crop_path2') or dup['path2']
+            is_cropped = bool(dup.get('crop_path1') and dup.get('crop_path2'))
+            
+            # Calculate relative path for images
+            try:
+                # Try to make paths relative to the report file
+                rel_path1 = os.path.relpath(path1, output_dir)
+                rel_path2 = os.path.relpath(path2, output_dir)
+            except ValueError:
+                # Fallback to absolute paths if on different drives
+                rel_path1 = Path(path1).as_uri()
+                rel_path2 = Path(path2).as_uri()
+                
+            html_parts.append(f'<div class="pair">')
+            html_parts.append(f'<h3>Pair #{i}: {dup["image1"]} vs {dup["image2"]}</h3>')
+            
+            html_parts.append('<div class="images">')
+            html_parts.append(f'<div class="image-container"><img src="{rel_path1}" alt="{dup["image1"]}"><p>{dup["image1"]}{" (Cropped)" if is_cropped else ""}</p></div>')
+            html_parts.append(f'<div class="image-container"><img src="{rel_path2}" alt="{dup["image2"]}"><p>{dup["image2"]}{" (Cropped)" if is_cropped else ""}</p></div>')
+            html_parts.append('</div>')
+            
+            html_parts.append('<div class="metrics">')
+            html_parts.append(f'<strong>Average Distance:</strong> <span class="metric-good">{dup["avg_distance"]:.2f}</span> (Lower is more similar)<br>')
+            html_parts.append(f'<strong>Histogram Similarity:</strong> <span class="metric-good">{dup["histogram_similarity"]:.3f}</span> (Higher is more similar)<br>')
+            html_parts.append(f'<strong>Hash Distances:</strong> {", ".join(f"{k}={v}" for k, v in dup["distances"].items())}')
+            html_parts.append('</div>')
+            
+            html_parts.append('</div>')
     
     html_parts.append('</body></html>')
     
@@ -843,6 +993,297 @@ def create_duplicate_pairs_report(duplicates, output_dir, filename='duplicates_r
         f.write('\n'.join(html_parts))
     
     print(f"Created duplicate pairs report: {report_path}")
+
+
+def organize_files(image_dir, all_results, blanks, mode='moderate'):
+    """
+    Copy files to organized folders: unique, duplicates, blanks.
+    Does NOT delete original files.
+    """
+    import shutil
+    
+    print(f"\n=== ORGANIZING FILES (Mode: {mode.upper()}) ===")
+    
+    # Setup directories (inside images folder)
+    base_dir = image_dir / f"organized_{mode}"
+    unique_dir = base_dir / "unique"
+    dup_dir = base_dir / "duplicates"
+    blank_dir = base_dir / "blanks"
+    
+    for d in [unique_dir, dup_dir, blank_dir]:
+        d.mkdir(parents=True, exist_ok=True)
+        
+    # Identify all files
+    all_files = list(get_image_files(image_dir))
+    all_filenames = {f.name for f in all_files}
+    
+    # Identify Blanks
+    blank_names = {b['name'] for b in blanks}
+    
+    # Identify Duplicates (based on selected mode)
+    duplicates = all_results.get(mode, [])
+    dup_names = {d['image2'] for d in duplicates} # image2 is always the duplicate to remove
+    
+    # Identify Unique (Everything else)
+    # Unique = All - Blanks - Duplicates
+    unique_names = all_filenames - blank_names - dup_names
+    
+    print(f"  Total Images: {len(all_files)}")
+    print(f"  Blanks: {len(blank_names)}")
+    print(f"  Duplicates: {len(dup_names)}")
+    print(f"  Unique: {len(unique_names)}")
+    
+    # Copy Files
+    print("  Copying files...")
+    
+    for f in all_files:
+        if f.name in blank_names:
+            shutil.copy2(f, blank_dir / f.name)
+        elif f.name in dup_names:
+            shutil.copy2(f, dup_dir / f.name)
+        else:
+            shutil.copy2(f, unique_dir / f.name)
+            
+    print(f"✓ Files organized in: {base_dir}")
+
+
+def create_combined_report(all_results, output_dir, report_path, sequential=False, blanks=None):
+    """Create a combined HTML report with tabs for each mode and blanks."""
+    
+    # Get all images for unique list calculation
+    import json
+    all_files = sorted(list(get_image_files(output_dir)))
+    all_filenames = [f.name for f in all_files]
+    blank_names = {b['name'] for b in blanks} if blanks else set()
+    
+    html = [
+        '<!DOCTYPE html><html><head><meta charset="UTF-8">',
+        '<style>',
+        'body { font-family: Arial; margin: 20px; background: #f5f5f5; }',
+        '.tab { overflow: hidden; border: 1px solid #ccc; background-color: #f1f1f1; border-radius: 5px 5px 0 0; }',
+        '.tab button { background-color: inherit; float: left; border: none; outline: none; cursor: pointer; padding: 14px 16px; transition: 0.3s; font-size: 17px; }',
+        '.tab button:hover { background-color: #ddd; }',
+        '.tab button.active { background-color: #2196F3; color: white; }',
+        '.tabcontent { display: none; padding: 20px; border: 1px solid #ccc; border-top: none; background: white; border-radius: 0 0 5px 5px; }',
+        '.group { background: white; margin: 20px 0; border: 1px solid #ddd; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }',
+        '.group-images { display: flex; flex-wrap: wrap; gap: 15px; }',
+        '.ref-container { text-align: center; width: 300px; border: 2px solid #2196F3; padding: 10px; background: #e3f2fd; }',
+        '.dup-container { text-align: center; width: 250px; border: 1px solid #f44336; padding: 10px; background: #ffebee; }',
+        '.blank-container { text-align: center; width: 250px; border: 1px solid #9e9e9e; padding: 10px; background: #eeeeee; display: inline-block; margin: 10px; vertical-align: top; }',
+        'img { max-width: 100%; height: auto; border: 1px solid #eee; }',
+        '.metrics { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 0.8em; text-align: left; }',
+        '.action-bar { position: sticky; top: 0; background: #333; color: white; padding: 15px; z-index: 100; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }',
+        '.btn { background: #2196F3; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; font-size: 16px; }',
+        '.btn:hover { background: #1976D2; }',
+        '.checkbox-wrapper { margin-top: 5px; font-weight: bold; }',
+        '.radio-wrapper { margin-top: 5px; font-size: 0.9em; color: #333; }',
+        '.storyline-section { margin-top: 40px; border-top: 3px solid #333; padding-top: 20px; }',
+        '.storyline-grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px; }',
+        '.card { border: 4px solid #ccc; border-radius: 8px; overflow: hidden; background: white; transition: all 0.2s; position: relative; display: flex; flex-direction: column; }',
+        '.card.keep { border-color: #4CAF50; opacity: 1.0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }',
+        '.card.discard { border-color: #f44336; opacity: 1.0; background: #ffebee; }',
+        '.card.blank { border-color: #E91E63; opacity: 1.0; background: #FCE4EC; }',
+        '.card:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); opacity: 1.0; z-index: 10; }',
+        '.card-img { flex-grow: 1; overflow: hidden; cursor: pointer; }',
+        '.card-img img { width: 100%; height: 100%; object-fit: cover; }',
+        '.card-footer { padding: 8px; font-size: 0.8em; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }',
+        '.keep .card-footer { background: #e8f5e9; color: #2e7d32; }',
+        '.discard .card-footer { background: #ffebee; color: #c62828; }',
+        '.blank .card-footer { background: #FCE4EC; color: #C2185B; }',
+        '.status-badge { padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8em; text-transform: uppercase; border: 1px solid rgba(0,0,0,0.1); }',
+        '.keep .status-badge { background: #c8e6c9; color: #2e7d32; }',
+        '.discard .status-badge { background: #ffcdd2; color: #c62828; }',
+        '.blank .status-badge { background: #F8BBD0; color: #C2185B; }',
+        '.toolbar { position: sticky; top: 0; background: #333; color: white; padding: 10px 20px; z-index: 100; display: flex; gap: 20px; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); flex-wrap: wrap; }',
+        '.toolbar-group { display: flex; align-items: center; gap: 10px; }',
+        'input[type=range] { width: 150px; }',
+        '/* Modal styles */',
+        '.modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }',
+        '.modal-content { margin: auto; display: block; max-width: 90%; max-height: 90vh; }',
+        '.close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }',
+        '.close:hover, .close:focus { color: #bbb; text-decoration: none; cursor: pointer; }',
+        '</style>',
+        '<script>',
+        'function openModal(src) {',
+        '   var modal = document.getElementById("imgModal");',
+        '   var modalImg = document.getElementById("img01");',
+        '   modal.style.display = "block";',
+        '   modalImg.src = src;',
+        '}',
+        'function closeModal() {',
+        '   document.getElementById("imgModal").style.display = "none";',
+        '}',
+        'function openMode(evt, modeName) {',
+        '  var i, tabcontent, tablinks;',
+        '  tabcontent = document.getElementsByClassName("tabcontent");',
+        '  for (i = 0; i < tabcontent.length; i++) { tabcontent[i].style.display = "none"; }',
+        '  tablinks = document.getElementsByClassName("tablinks");',
+        '  for (i = 0; i < tablinks.length; i++) { tablinks[i].className = tablinks[i].className.replace(" active", ""); }',
+        '  document.getElementById(modeName).style.display = "block";',
+        '  evt.currentTarget.className += " active";',
+        '}',
+        'function toggleCard(footer) {',
+        '   // Toggle between keep and discard',
+        '   var card = footer.closest(".card");',
+        '   var checkbox = card.querySelector("input[type=checkbox]");',
+        '   checkbox.checked = !checkbox.checked;',
+        '   updateCardVisuals(card, checkbox.checked);',
+        '}',
+        'function updateCardVisuals(card, isKept) {',
+        '   var badge = card.querySelector(".status-badge");',
+        '   if (isKept) {',
+        '       card.classList.remove("discard", "blank");',
+        '       card.classList.add("keep");',
+        '       badge.innerText = "KEEP";',
+        '   } else {',
+        '       card.classList.remove("keep");',
+        '       // Determine if it was blank or duplicate based on original class or data attribute',
+        '       // For simplicity, we just use "discard" style for all removed items',
+        '       card.classList.add("discard");',
+        '       badge.innerText = "DISCARD";',
+        '   }',
+        '   updateCounts();',
+        '}',
+        'function updateGridSize(val) {',
+        '   var size = val + "px";',
+        '   document.documentElement.style.setProperty("--card-width", size);',
+        '   var cards = document.querySelectorAll(".card");',
+        '   cards.forEach(c => c.style.width = size);',
+        '}',
+        'function toggleDiscarded(show) {',
+        '   var discards = document.querySelectorAll(".card.discard, .card.blank");',
+        '   discards.forEach(d => d.style.display = show ? "flex" : "none");',
+        '}',
+        'function updateCounts() {',
+        '   // Update counts in toolbar if we add them',
+        '}',
+        'function generateScript(mode) {',
+        '   var container = document.getElementById(mode);',
+        '   var cards = container.querySelectorAll(".card");',
+        '   var commands = [];',
+        '   var baseDir = "organized_" + mode;',
+        '   commands.push("@echo off");',
+        '   commands.push("mkdir \\"" + baseDir + "\\\\unique\\"");',
+        '   commands.push("mkdir \\"" + baseDir + "\\\\duplicates\\"");',
+        '   commands.push("mkdir \\"" + baseDir + "\\\\blanks\\"");',
+        '   ',
+        '   cards.forEach(function(card) {',
+        '       var checkbox = card.querySelector("input[type=checkbox]");',
+        '       var file = checkbox.value;',
+        '       var isKept = checkbox.checked;',
+        '       var originalType = card.dataset.type; // duplicate, blank, unique',
+        '       ',
+        '       if (isKept) {',
+        '           commands.push("copy \\"" + file + "\\" \\"" + baseDir + "\\\\unique\\\\" + file + "\\"");',
+        '       } else {',
+        '           // It is discarded. Move to appropriate folder.',
+        '           var target = (originalType === "blank") ? "blanks" : "duplicates";',
+        '           commands.push("copy \\"" + file + "\\" \\"" + baseDir + "\\\\" + target + "\\\\" + file + "\\"");',
+        '       }',
+        '   });',
+        '   ',
+        '   var text = commands.join("\\n");',
+        '   var blob = new Blob([text], { type: "text/plain" });',
+        '   var a = document.createElement("a");',
+        '   a.href = URL.createObjectURL(blob);',
+        '   a.download = "move_files_" + mode + ".bat";',
+        '   a.click();',
+        '}',
+        '</script>',
+
+        '</head><body>',
+        '<h1>Deduplication Comparison Report</h1>',
+        '<div class="tab">'
+    ]
+    
+    modes = list(all_results.keys())
+    for i, mode in enumerate(modes):
+        active = ' class="tablinks active"' if i == 0 else ' class="tablinks"'
+        html.append(f'<button{active} onclick="openMode(event, \'{mode}\')">{mode.upper()} ({len(all_results[mode])})</button>')
+    
+    # Blanks tab removed as blanks are now integrated into the main grid
+        
+    html.append('</div>')
+    
+    # Mode Tabs
+    for i, mode in enumerate(modes):
+        duplicates = all_results[mode]
+        dup_names = {d['image2'] for d in duplicates}
+        
+        # Build Flat List of All Images with Status
+        # 1. Start with all files
+        # 2. Mark Blanks
+        # 3. Mark Duplicates
+        
+        grid_items = []
+        for filename in all_filenames:
+            status = 'keep'
+            reason = 'Unique'
+            original_type = 'unique'
+            
+            if filename in blank_names:
+                status = 'blank'
+                reason = 'Blank'
+                original_type = 'blank'
+            elif filename in dup_names:
+                status = 'discard'
+                reason = 'Duplicate'
+                original_type = 'duplicate'
+                
+            # Get path
+            try:
+                path = output_dir / filename
+                rel_path = os.path.relpath(path, output_dir)
+            except:
+                rel_path = Path(path).as_uri()
+                
+            grid_items.append({
+                'name': filename,
+                'status': status,
+                'reason': reason,
+                'type': original_type,
+                'src': rel_path
+            })
+            
+        display = 'block' if i == 0 else 'none'
+        html.append(f'<div id="{mode}" class="tabcontent" style="display: {display}">')
+        
+        # Toolbar
+        html.append(f'<div class="toolbar">')
+        html.append(f'<div class="toolbar-group"><strong>{mode.upper()}</strong></div>')
+        html.append(f'<div class="toolbar-group"><label>Size:</label><input type="range" min="100" max="400" value="200" oninput="updateGridSize(this.value)"></div>')
+        html.append(f'<div class="toolbar-group"><label><input type="checkbox" checked onchange="toggleDiscarded(this.checked)"> Show Discarded</label></div>')
+        html.append(f'<div class="toolbar-group"><button class="btn" onclick="generateScript(\'{mode}\')">Download Move Script</button></div>')
+        html.append(f'</div>')
+        
+        # Grid
+        html.append(f'<div class="storyline-grid">')
+        for item in grid_items:
+            is_checked = "checked" if item['status'] == 'keep' else ""
+            badge_text = "KEEP" if item['status'] == 'keep' else item['reason'].upper()
+            
+            html.append(f'<div class="card {item["status"]}" data-type="{item["type"]}" style="width: 200px;">')
+            html.append(f'<div class="card-img"><img src="{item["src"]}" onclick="openModal(this.src)"></div>')
+            html.append(f'<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">')
+            html.append(f'<span>{item["name"]}</span>')
+            html.append(f'<span class="status-badge">{badge_text}</span>')
+            html.append(f'<input type="checkbox" value="{item["name"]}" {is_checked} style="display:none">') # Hidden checkbox
+            html.append(f'</div></div>')
+            
+        html.append(f'</div></div>')
+        
+    # Modal HTML
+    html.append('<div id="imgModal" class="modal">')
+    html.append('<span class="close" onclick="closeModal()">&times;</span>')
+    html.append('<img class="modal-content" id="img01">')
+    html.append('</div>')
+        
+    html.append('</body></html>')
+    
+    with open(report_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(html))
+    
+    print(f"Created combined report: {report_path}")
 
 
 def run_deduplication(image_dir, output_dir, mode, args, report_suffix=''):
@@ -854,7 +1295,10 @@ def run_deduplication(image_dir, output_dir, mode, args, report_suffix=''):
     
     # Override with custom arguments if provided
     threshold = args.threshold if args.threshold else settings['threshold']
-    histogram_threshold = settings.get('histogram_threshold', 0.92)
+    histogram_threshold = settings.get('histogram_threshold', 0.90) # Default to 0.90
+    
+    # Handle sequential flag
+    sequential = args.sequential
     
     # Handle blur flags
     if args.blur:
@@ -876,22 +1320,18 @@ def run_deduplication(image_dir, output_dir, mode, args, report_suffix=''):
     print(f"Settings: Threshold={threshold}, Hist={histogram_threshold}, Blur={use_blur}, Downscale={downscale}")
     
     # Force save_crops to True for reporting
-    save_crops = True
     
     duplicates, images_data = find_duplicates_with_smart_crop(
         image_dir,
-        crop_method=args.crop_method,
         threshold=threshold,
-        histogram_threshold=histogram_threshold,
-        use_blur=use_blur,
+        blur_enabled=use_blur,
         downscale=downscale,
-        save_crops=save_crops,
-        debug=args.debug
+        sequential=sequential
     )
     
     # Create duplicate pairs report
     report_name = f'duplicates_report_{mode}{report_suffix}.html'
-    create_duplicate_pairs_report(duplicates, output_dir, report_name)
+    create_duplicate_pairs_report(duplicates, output_dir, report_name, sequential=sequential)
     
     return duplicates
 
@@ -906,21 +1346,210 @@ def parse_arguments():
     parser.add_argument('--threshold', type=int)
     parser.add_argument('--content-threshold', type=int, default=25)
     parser.add_argument('--crop-method', type=str, default='auto')
+    parser.add_argument('--crop-margin', type=float, default=0.20, help="Margin for content_aware crop (0.20 = 20%)")
     parser.add_argument('--blur', action='store_true')
     parser.add_argument('--no-blur', action='store_true')
     parser.add_argument('--downscale', action='store_true')
+    parser.add_argument('--no-downscale', action='store_true')
     parser.add_argument('--save-crops', action='store_true')
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--detect-blank-first', action='store_true')
+    parser.add_argument('--sequential', action='store_true', help="Use optimized sequential comparison (faster, assumes sorted)")
+    parser.add_argument('--verify', type=str, help="Verify specific group (e.g. 'img1.png, img2.png, ...')")
     
     return parser.parse_args()
+
+
+def verify_group_all_modes(image_dir, group_string, args):
+    """
+    Analyze a group of images across ALL modes (Strict, Moderate, Lenient) 
+    and generate a combined HTML report.
+    """
+    try:
+        # Parse group string
+        if ' vs ' in group_string:
+            parts = group_string.split(' vs ')
+        else:
+            parts = group_string.split(',')
+            
+        image_names = [p.strip() for p in parts if p.strip()]
+        
+        if len(image_names) < 2:
+            print(f"Error: Need at least 2 images to verify. Got: {image_names}")
+            return
+            
+        ref_name = image_names[0]
+        others = image_names[1:]
+        
+        print(f"\n=== VERIFYING GROUP ACROSS ALL MODES ===")
+        print(f"Reference: {ref_name}")
+        print(f"Comparing against: {', '.join(others)}")
+        
+        # Setup HTML
+        html = [
+            '<!DOCTYPE html><html><head><meta charset="UTF-8">',
+            '<style>',
+            'body { font-family: Arial; margin: 20px; background: #f5f5f5; }',
+            '.mode-section { background: white; margin: 30px 0; border: 1px solid #ccc; border-radius: 8px; overflow: hidden; }',
+            '.mode-header { background: #333; color: white; padding: 15px; }',
+            '.mode-header h2 { margin: 0; }',
+            '.settings { font-family: monospace; color: #ccc; margin-top: 5px; }',
+            '.comparison { display: flex; padding: 20px; border-bottom: 1px solid #eee; align-items: flex-start; }',
+            '.ref-col { width: 400px; text-align: center; border-right: 2px solid #eee; padding-right: 20px; margin-right: 20px; }',
+            '.dup-col { width: 400px; text-align: center; }',
+            '.metrics-col { flex: 1; padding-left: 20px; }',
+            'img { max-width: 100%; border: 1px solid #ddd; margin-bottom: 5px; }',
+            '.vis-label { font-size: 0.8em; color: #666; margin-bottom: 10px; }',
+            '.status { font-weight: bold; padding: 5px 10px; border-radius: 4px; display: inline-block; margin-bottom: 10px; }',
+            '.status-dup { background: #ffebee; color: #c62828; border: 1px solid #ef9a9a; }',
+            '.status-unique { background: #e8f5e9; color: #2e7d32; border: 1px solid #a5d6a7; }',
+            '.metric-row { margin: 5px 0; font-family: monospace; }',
+            '</style>',
+            '</head><body>',
+            f'<h1>Verification Analysis Report</h1>',
+            f'<p><strong>Group:</strong> {group_string}</p>'
+        ]
+        
+        modes = ['strict', 'moderate', 'lenient']
+        debug_dir = Path(image_dir) / "debug_verify"
+        debug_dir.mkdir(exist_ok=True)
+        
+        for mode in modes:
+            print(f"\nRunning {mode.upper()} analysis...")
+            
+            # Get settings
+            settings = get_settings_from_mode(mode)
+            threshold = args.threshold if args.threshold else settings['threshold']
+            use_blur = args.blur or (not args.no_blur and settings.get('use_blur', True))
+            downscale = args.downscale or settings.get('downscale', False)
+            hist_thresh = settings.get('histogram_threshold', 0.90) # Default to 0.90
+            
+            html.append(f'<div class="mode-section">')
+            html.append(f'<div class="mode-header"><h2>{mode.upper()} MODE</h2>')
+            html.append(f'<div class="settings">Threshold: {threshold} | Blur: {use_blur} | Downscale: {downscale} | Hist Thresh: {hist_thresh}</div></div>')
+            
+            # Helper to process image
+            def process_one(p, prefix):
+                img = Image.open(p)
+                
+                # Get crop box and create visualization
+                crop_box = get_crop_box(img, method=args.crop_method, margin=args.crop_margin)
+                
+                # Visualization: Original with Red Box
+                vis_img = img.copy()
+                draw = ImageDraw.Draw(vis_img)
+                draw.rectangle(crop_box, outline="red", width=5)
+                vis_save_name = f"{prefix}_vis_{p.name}"
+                vis_img.save(debug_dir / vis_save_name)
+                
+                # Perform Crop & Process
+                cropped = img.crop(crop_box)
+                proc = cropped.copy()
+                if use_blur: proc = proc.filter(ImageFilter.GaussianBlur(radius=2))
+                if downscale: proc = proc.resize((proc.width//2, proc.height//2), Image.LANCZOS)
+                hashes = compute_multi_scale_hash(proc)
+                
+                # Calculate Entropy
+                gray = np.array(proc.convert('L'))
+                hist = np.histogram(gray, bins=256)[0]
+                hist = hist[hist > 0]
+                hist = hist / hist.sum()
+                entropy = -np.sum(hist * np.log2(hist))
+                
+                # Save processed debug image
+                save_name = f"{prefix}_{p.name}"
+                proc.save(debug_dir / save_name)
+                
+                return {
+                    'name': p.name, 
+                    'cropped': cropped,
+                    'processed': proc, 
+                    'hashes': hashes,
+                    'entropy': entropy,
+                    'debug_path': str(debug_dir / save_name),
+                    'vis_path': str(debug_dir / vis_save_name)
+                }
+
+            ref_path = Path(image_dir) / ref_name
+            if not ref_path.exists():
+                print(f"Skipping mode {mode}: Ref not found")
+                continue
+                
+            ref_data = process_one(ref_path, f"{mode}_ref")
+            
+            # Get relative path for HTML
+            try:
+                rel_ref_path = os.path.relpath(ref_data['debug_path'], image_dir)
+                rel_ref_vis = os.path.relpath(ref_data['vis_path'], image_dir)
+            except:
+                rel_ref_path = Path(ref_data['debug_path']).as_uri()
+                rel_ref_vis = Path(ref_data['vis_path']).as_uri()
+            
+            for other_name in others:
+                other_path = Path(image_dir) / other_name
+                if not other_path.exists():
+                    continue
+                    
+                other_data = process_one(other_path, f"{mode}_dup")
+                
+                # Compare
+                comp = compare_images_smart(ref_data, other_data, threshold, hist_thresh)
+                
+                # Get relative path
+                try:
+                    rel_other_path = os.path.relpath(other_data['debug_path'], image_dir)
+                    rel_other_vis = os.path.relpath(other_data['vis_path'], image_dir)
+                except:
+                    rel_other_path = Path(other_data['debug_path']).as_uri()
+                    rel_other_vis = Path(other_data['vis_path']).as_uri()
+                
+                # Calculate Advanced Metrics (Use Raw Cropped images for consistency)
+                ssim_score = compute_ssim_score(ref_data['cropped'], other_data['cropped'])
+                dl_score = compute_deep_similarity(ref_data['cropped'], other_data['cropped'])
+                
+                # Add to HTML
+                status_class = "status-dup" if comp['is_duplicate'] else "status-unique"
+                status_text = "DUPLICATE" if comp['is_duplicate'] else "UNIQUE"
+                
+                html.append(f'<div class="comparison">')
+                html.append(f'<div class="ref-col"><strong>Reference</strong><br><img src="{rel_ref_vis}"><div class="vis-label">Original with Crop Box</div><img src="{rel_ref_path}"><div class="vis-label">Processed Input (Entropy: {ref_data["entropy"]:.2f})</div>{ref_name}</div>')
+                html.append(f'<div class="dup-col"><strong>Comparison</strong><br><img src="{rel_other_vis}"><div class="vis-label">Original with Crop Box</div><img src="{rel_other_path}"><div class="vis-label">Processed Input (Entropy: {other_data["entropy"]:.2f})</div>{other_name}</div>')
+                html.append(f'<div class="metrics-col">')
+                html.append(f'<div class="{status_class}">{status_text}</div>')
+                html.append(f'<div class="metric-row">Avg Distance: <strong>{comp["avg_distance"]:.2f}</strong> (Limit {comp["adjusted_threshold"]})</div>')
+                html.append(f'<div class="metric-row">Min Distance: <strong>{comp["min_distance"]}</strong> (Limit {comp["adjusted_threshold"]})</div>')
+                html.append(f'<div class="metric-row">Hist Similarity: <strong>{comp["histogram_similarity"]:.4f}</strong> (Target {hist_thresh})</div>')
+                html.append(f'<div class="metric-row">Entropy: <strong>{comp["entropy"]:.2f}</strong></div>')
+                html.append(f'<hr>')
+                html.append(f'<div class="metric-row" style="color:blue"><strong>Raw SSIM: {ssim_score:.4f}</strong> (Target > 0.95)</div>')
+                html.append(f'<div class="metric-row" style="color:purple"><strong>Raw ResNet: {dl_score:.4f}</strong> (Target > 0.98)</div>')
+                html.append(f'<hr>')
+                html.append(f'<div class="metric-row">Hash Distances:</div>')
+                for k, v in comp['distances'].items():
+                    html.append(f'<div class="metric-row">&nbsp;&nbsp;{k}: {v}</div>')
+                html.append(f'</div></div>')
+                
+            html.append('</div>')
+            
+        html.append('</body></html>')
+        
+        report_path = Path(image_dir) / "verification_report.html"
+        with open(report_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(html))
+            
+        print(f"\nGenerated verification report: {report_path}")
+        
+    except Exception as e:
+        print(f"Error verifying group: {e}")
+        import traceback
+        traceback.print_exc()
 
 
 def get_settings_from_mode(mode):
     """Get preset settings."""
     modes = {
         'lenient': {'threshold': 15, 'histogram_threshold': 0.88, 'use_blur': True, 'downscale': True},
-        'moderate': {'threshold': 12, 'histogram_threshold': 0.92, 'use_blur': True, 'downscale': False},
+        'moderate': {'threshold': 12, 'histogram_threshold': 0.90, 'use_blur': True, 'downscale': False}, # Changed hist_thresh to 0.90
         'strict': {'threshold': 8, 'histogram_threshold': 0.95, 'use_blur': False, 'downscale': False}
     }
     return modes.get(mode, modes['moderate'])
@@ -947,6 +1576,11 @@ if __name__ == "__main__":
     use_blur = args.blur or (not args.no_blur and settings.get('use_blur', True))
     downscale = args.downscale or settings.get('downscale', False)
     
+    # Verify specific pair
+    if args.verify:
+        verify_group_all_modes(IMAGE_DIR, args.verify, args)
+        sys.exit(0)
+    
     # Detect blank images
     if args.mode == 'detect-blank' or args.detect_blank_first:
         blank_images, all_imgs = find_blank_images(IMAGE_DIR, args.content_threshold, args.debug)
@@ -959,20 +1593,54 @@ if __name__ == "__main__":
             sys.exit(0)
     
     # Compare all modes
-    if args.mode == 'compare-all':
-        print("COMPARING ALL MODES (Strict, Moderate, Lenient)")
-        modes = ['strict', 'moderate', 'lenient']
-        results = {}
+    elif args.mode == 'compare-all':
+        print(f"Found {len(images)} images in {IMAGE_DIR}")
         
-        for mode in modes:
-            duplicates = run_deduplication(IMAGE_DIR, IMAGE_DIR, mode, args)
-            results[mode] = len(duplicates)
-            
+        # 1. Detect Blanks First
+        print("\n=== 1. DETECTING BLANK SLIDES ===")
+        blanks, _ = find_blank_images(IMAGE_DIR) # find_blank_images returns (blank_images, all_images_data)
+        blank_paths = {Path(b['path']) for b in blanks} # Convert to Path objects for comparison
+        print(f"Found {len(blanks)} blank images. Excluding them from deduplication.")
+        
+        # 2. Filter images for deduplication
+        # We only want to compare non-blank images
+        all_image_paths = sorted(list(get_image_files(IMAGE_DIR))) # Get all image paths as Path objects
+        non_blank_files = [f for f in all_image_paths if f not in blank_paths]
+        print(f"Proceeding with {len(non_blank_files)} images for deduplication.")
+
+        # 3. Run Moderate Mode Only
+        print("\n=== 2. RUNNING DEDUPLICATION (MODERATE) ===")
+        
+        # Setup Moderate params
+        threshold = 12
+        blur = True
+        downscale = False 
+        
+        print(f"Settings: Threshold={threshold}, Blur={blur}, Downscale={downscale}")
+        
+        duplicates, _ = find_duplicates_with_smart_crop(
+            IMAGE_DIR, 
+            threshold=threshold, 
+            blur_enabled=blur, 
+            downscale=downscale,
+            sequential=True, # Always sequential as requested
+            file_list=non_blank_files # Passing the filtered list
+        )
+        
+        all_results = {'moderate': duplicates}
+        
+        # 4. Generate Report
+        report_path = IMAGE_DIR / "duplicates_report_combined.html"
+        create_combined_report(all_results, IMAGE_DIR, report_path, sequential=True, blanks=blanks)
+        
         print("\n" + "="*70)
-        print("COMPARISON RESULTS:")
-        for mode in modes:
-            print(f"  {mode.upper()}: Found {results[mode]} duplicate pairs")
-        print(f"\nCheck the generated HTML reports in {IMAGE_DIR}")
+        print("RESULTS SUMMARY")
+        print(f"  BLANKS:     {len(blanks)}")
+        print(f"  DUPLICATES: {len(duplicates)}")
+        print(f"  UNIQUE:     {len(all_image_paths) - len(blanks) - len(duplicates)}")
+        print(f"\nCheck the report: {report_path}")
+        print("\nACTION REQUIRED: Open the HTML report, select the images to move, and click 'Download Move Script'.")
+        print("Run the downloaded .bat file to organize the images.")
         
     # Single run
     else:
