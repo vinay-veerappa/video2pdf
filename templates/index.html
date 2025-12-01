@@ -236,50 +236,170 @@
                 <select id="projectSelect" onchange="updateProjectOptions()">
                     <option value="">Loading projects...</option>
                 </select>
+                <div id="projectInfo" class="project-info"></div>
+            </div>
+
+            <div class="form-group">
+                <label>Options</label>
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="skipDownload"> Skip Video Download
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="skipExtraction"> Skip Extraction
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="downloadTranscript" checked> Download Transcript
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <button onclick="startProcess()" id="startBtn">Start Processing</button>
+
+        <div class="progress-container" id="progressContainer">
+            <progress id="progressBar" value="0" max="100"></progress>
+            <div class="status-text">
+                <span id="statusMessage">Initializing...</span>
+                <span id="percentText">0%</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentTab = 'new';
+        let projectsData = [];
+
+        function switchTab(tab) {
+            currentTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+            if (tab === 'new') {
+                document.querySelector('.tab:nth-child(1)').classList.add('active');
+                document.getElementById('new-tab').classList.add('active');
+            } else {
+                document.querySelector('.tab:nth-child(2)').classList.add('active');
+                document.getElementById('existing-tab').classList.add('active');
+                loadProjects();
+            }
+        }
+
+        function loadProjects() {
+            fetch('/list_videos')
+                .then(res => res.json())
+                .then(data => {
+                    projectsData = data;
+                    const select = document.getElementById('projectSelect');
+                    select.innerHTML = '<option value="">-- Select a Project --</option>';
+                    data.forEach(p => {
+                        const option = document.createElement('option');
+                        option.value = p.id;
+                        option.textContent = p.name;
+                        select.appendChild(option);
+                    });
+                });
+        }
+
+        function updateProjectOptions() {
+            const id = document.getElementById('projectSelect').value;
+            const project = projectsData.find(p => p.id === id);
+            const infoDiv = document.getElementById('projectInfo');
+
+            if (project) {
+                let badges = '';
+                if (project.has_video) badges += '<span class="badge badge-green">Video</span>';
+                else badges += '<span class="badge badge-gray">No Video</span>';
+
+                if (project.has_images) badges += '<span class="badge badge-green">Images</span>';
+                else badges += '<span class="badge badge-gray">No Images</span>';
+
+                if (project.has_dedup) badges += '<span class="badge badge-green">Deduped</span>';
+
+                if (project.has_transcript) badges += '<span class="badge badge-green">Transcript</span>';
+                else badges += '<span class="badge badge-gray">No Transcript</span>';
+
+                infoDiv.innerHTML = badges;
+
+                // Auto-select options
+                document.getElementById('skipDownload').checked = project.has_video;
+                document.getElementById('skipExtraction').checked = project.has_images;
+                document.getElementById('downloadTranscript').checked = !project.has_transcript;
+            } else {
+                infoDiv.innerHTML = '';
+                document.getElementById('skipDownload').checked = false;
+                document.getElementById('skipExtraction').checked = false;
+                document.getElementById('downloadTranscript').checked = true;
+            }
+        }
+
+        function startProcess() {
+            const btn = document.getElementById('startBtn');
+            const progressContainer = document.getElementById('progressContainer');
+
+            let body = new URLSearchParams();
+
+            if (currentTab === 'new') {
+                const url = document.getElementById('urlInput').value;
+                if (!url) return alert("Please enter a URL");
+                body.append('url', url);
+            } else {
+                const id = document.getElementById('projectSelect').value;
+                if (!id) return alert("Please select a project");
+                body.append('existing_video_id', id);
+                body.append('skip_download', document.getElementById('skipDownload').checked);
+                body.append('skip_extraction', document.getElementById('skipExtraction').checked);
+                body.append('download_transcript', document.getElementById('downloadTranscript').checked);
+            }
+
+            btn.disabled = true;
+            progressContainer.style.display = 'block';
+
+            fetch('/process', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
                 body: body
-                })
+            })
                 .then(res => res.json())
                 .then(data => {
-                if (data.error) {
-                alert(data.error);
-                btn.disabled = false;
-                progressContainer.style.display = 'none';
-                } else {
-                pollStatus(data.job_id);
-                }
+                    if (data.error) {
+                        alert(data.error);
+                        btn.disabled = false;
+                        progressContainer.style.display = 'none';
+                    } else {
+                        pollStatus(data.job_id);
+                    }
                 })
                 .catch(err => {
-                console.error(err);
-                alert("Error starting process");
-                btn.disabled = false;
+                    console.error(err);
+                    alert("Error starting process");
+                    btn.disabled = false;
                 });
-                }
+        }
 
-                function pollStatus(jobId) {
-                const interval = setInterval(() => {
+        function pollStatus(jobId) {
+            const interval = setInterval(() => {
                 fetch('/status/' + jobId)
-                .then(res => res.json())
-                .then(data => {
-                document.getElementById('statusMessage').innerText = data.message || data.status;
-                if (data.percent !== undefined) {
-                document.getElementById('progressBar').value = data.percent;
-                document.getElementById('percentText').innerText = data.percent + '%';
-                }
+                    .then(res => res.json())
+                    .then(data => {
+                        document.getElementById('statusMessage').innerText = data.message || data.status;
+                        if (data.percent !== undefined) {
+                            document.getElementById('progressBar').value = data.percent;
+                            document.getElementById('percentText').innerText = data.percent + '%';
+                        }
 
-                if (data.status === 'ready_for_curation') {
-                clearInterval(interval);
-                window.location.href = '/curate/' + data.video_id;
-                } else if (data.status === 'error') {
-                clearInterval(interval);
-                alert("Error: " + data.error);
-                document.getElementById('startBtn').disabled = false;
-                }
-                });
-                }, 1000);
-                }
-                </script>
+                        if (data.status === 'ready_for_curation') {
+                            clearInterval(interval);
+                            window.location.href = '/curate/' + data.video_id;
+                        } else if (data.status === 'error') {
+                            clearInterval(interval);
+                            alert("Error: " + data.error);
+                            document.getElementById('startBtn').disabled = false;
+                        }
+                    });
+            }, 1000);
+        }
+    </script>
 </body>
 
 </html>
