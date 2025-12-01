@@ -73,6 +73,11 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
         if auto_cookies:
             print(f"Using extracted browser cookies: {auto_cookies}")
             ydl_opts['cookiefile'] = auto_cookies
+        else:
+            # Fallback to yt-dlp native browser cookies
+            # We try Chrome by default. If this fails, the user might need to configure it.
+            print("Warning: browser_cookie3 failed. Attempting to use yt-dlp native browser cookies (Chrome)...")
+            ydl_opts['cookiesfrombrowser'] = ('chrome',)
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
