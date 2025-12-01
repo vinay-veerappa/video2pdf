@@ -601,8 +601,7 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, **kwargs):
         existing_images = glob.glob(os.path.join(images_folder, "*.png"))
         screenshots_count = len(existing_images)
     
-        'screenshots_count': screenshots_count
-    }
+
 
     # Save video file if it exists in temp or was downloaded
     if video_path and os.path.exists(video_path):

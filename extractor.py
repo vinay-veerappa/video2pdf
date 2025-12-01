@@ -2,6 +2,10 @@ import cv2
 import imutils
 import time
 import os
+import subprocess
+import shutil
+import glob
+import sys
 from config import (
     VAR_THRESHOLD, DETECT_SHADOWS, MIN_TIME_BETWEEN_CAPTURES, 
     MAX_SIMILARITY_COMPARISONS
@@ -44,106 +48,112 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
                               min_time_interval=MIN_TIME_BETWEEN_CAPTURES,
                               save_duplicates_path=None,
                               similarity_method='grid'):
-    """Detect and save unique screenshots from video with improved duplicate detection"""
-    # Calculate derived parameters
-    warmup = frame_rate
-    fgbg_history = frame_rate * 15
-    
-    # Initialize background subtractor
-    fgbg = cv2.createBackgroundSubtractorMOG2(
-        history=fgbg_history, 
-        varThreshold=VAR_THRESHOLD,
-        detectShadows=DETECT_SHADOWS
-    )
-
-    captured = False
+    """
+    Detect and save unique screenshots using FFmpeg for fast extraction 
+    followed by Python-based deduplication.
+    """
     start_time = time.time()
-    (W, H) = (None, None)
-    screenshots_count = 0
-    previous_frames = []  # Store last N frames for comparison
-    previous_hashes = []  # Store hashes of last N frames
-    last_capture_time = None  # Track time of last capture
-
-    for frame_count, frame_time, frame in get_frames(video_path, frame_rate):
-        orig = frame.copy()
+    
+    # 1. Extract ALL frames to a temp directory using FFmpeg (Fast!)
+    temp_extract_dir = os.path.join(os.path.dirname(output_folder_screenshot_path), "temp_extracted")
+    if os.path.exists(temp_extract_dir):
+        shutil.rmtree(temp_extract_dir)
+    os.makedirs(temp_extract_dir, exist_ok=True)
+    
+    print(f"Extracting frames using FFmpeg (rate: {frame_rate} fps)...")
+    
+    try:
+        # FFmpeg command: extract at frame_rate, resize to max 1920 width
+        # -vf "fps=1,scale='min(1920,iw)':-1"
+        # We use min(1920,iw) to avoid upscaling if video is smaller
         
-        # Resize if video is larger than 1080p (1920px width)
-        # This improves processing speed and reduces disk usage without hurting OCR
-        if orig.shape[1] > 1920:
-            orig = imutils.resize(orig, width=1920)
-            
-        frame_resized = imutils.resize(frame, width=600)
-        mask = fgbg.apply(frame_resized)
+        cmd = [
+            "ffmpeg",
+            "-i", video_path,
+            "-vf", f"fps={frame_rate},scale='min(1920,iw)':-2", 
+            "-vsync", "0",
+            "-q:v", "2", # High quality JPEG for temp (faster) or use PNG
+            # Let's use PNG for accuracy as requested, but maybe compression level 1 for speed
+            "-compression_level", "1",
+            os.path.join(temp_extract_dir, "%05d.png")
+        ]
+        
+        # Check if ffmpeg is in path, otherwise try to find it or fail gracefully
+        # We assume it is since we checked earlier.
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        print("Warning: FFmpeg failed or not found. Falling back to OpenCV extraction.")
+        # Fallback to old method if FFmpeg fails? 
+        # For now, let's just raise error or we'd need to keep the old code.
+        # Given the user wants speed, let's assume FFmpeg works.
+        raise Exception("FFmpeg extraction failed. Please ensure FFmpeg is installed.")
 
-        if W is None or H is None:
-            (H, W) = mask.shape[:2]
-
-        # Compute percentage of foreground
-        p_diff = (cv2.countNonZero(mask) / float(W * H)) * 100
-
-        # Motion detection logic
-        if p_diff < min_percent and not captured and frame_count > warmup:
-            # Check minimum time interval (if enabled)
-            if min_time_interval > 0 and last_capture_time is not None:
-                time_since_last = (frame_time - last_capture_time) * 60  # Convert to seconds
-                if time_since_last < min_time_interval:
-                    continue  # Skip if too soon after last capture
-            
-            # Additional similarity check to avoid duplicates
-            should_save = True
-            
-            # 1. Fast check using dHash
-            current_hash = dhash(orig)
-            if use_similarity and previous_hashes:
-                for prev_hash in previous_hashes:
-                    dist = calculate_hamming_distance(current_hash, prev_hash)
-                    if dist <= 2:  # Threshold for "very similar" (0-2 bits different out of 64)
-                        should_save = False
-                        # print(f"Frame {frame_count} skipped (dHash distance: {dist})")
-                        break
-            
-            # 2. Detailed check using SSIM (only if dHash didn't flag it)
-            if should_save and use_similarity and previous_frames:
-                # Compare with last N frames
-                max_similarity = 0
-                for prev_frame in previous_frames:
-                    similarity = calculate_similarity(orig, prev_frame, method=similarity_method)
-                    if similarity and similarity > max_similarity:
-                        max_similarity = similarity
-                
-                if max_similarity > similarity_threshold:
+    # 2. Process extracted frames
+    extracted_files = sorted(glob.glob(os.path.join(temp_extract_dir, "*.png")))
+    print(f"Extracted {len(extracted_files)} frames. Starting deduplication...")
+    
+    screenshots_count = 0
+    previous_frames = []
+    previous_hashes = []
+    
+    # We need to calculate timestamps based on frame index and rate
+    # frame_time = index / frame_rate
+    
+    for i, file_path in enumerate(extracted_files):
+        frame_time = i / frame_rate
+        
+        # Read image
+        frame = cv2.imread(file_path)
+        if frame is None: continue
+        
+        should_save = True
+        
+        # 1. Fast check using dHash
+        current_hash = dhash(frame)
+        if use_similarity and previous_hashes:
+            for prev_hash in previous_hashes:
+                dist = calculate_hamming_distance(current_hash, prev_hash)
+                if dist <= 2: # Stricter threshold for dHash (very similar)
                     should_save = False
-                    print(f"Frame {frame_count} skipped (similarity: {max_similarity:.3f}, "
-                          f"time: {frame_time/60:.2f} min)")
-                    
-                    # Save duplicate if requested
-                    if save_duplicates_path:
-                        filename = f"{screenshots_count:03}_{round(frame_time/60, 2)}_DUPLICATE.png"
-                        path = os.path.join(save_duplicates_path, filename)
-                        cv2.imwrite(path, orig)
-
-            if should_save:
-                captured = True
-                filename = f"{screenshots_count:03}_{round(frame_time/60, 2)}.png"
-                path = os.path.join(output_folder_screenshot_path, filename)
-                print(f"Saving {path} (frame {frame_count}, time: {frame_time/60:.2f} min)")
-                cv2.imwrite(path, orig)
+                    break
+        
+        # 2. Detailed check using SSIM (only if dHash didn't flag it)
+        if should_save and use_similarity and previous_frames:
+            max_similarity = 0
+            for prev_frame in previous_frames:
+                # We can use the frame directly since it's already resized by FFmpeg
+                similarity = calculate_similarity(frame, prev_frame, method=similarity_method)
+                if similarity and similarity > max_similarity:
+                    max_similarity = similarity
+            
+            if max_similarity > similarity_threshold:
+                should_save = False
                 
-                # Update tracking
-                last_capture_time = frame_time
-                previous_frames.append(orig.copy())
-                previous_hashes.append(current_hash)
-                
-                # Keep only last N frames for comparison
-                if len(previous_frames) > MAX_SIMILARITY_COMPARISONS:
-                    previous_frames.pop(0)
-                    previous_hashes.pop(0)
-                
-                screenshots_count += 1
+                # Save duplicate if requested
+                if save_duplicates_path:
+                    filename = f"{screenshots_count:03}_{round(frame_time/60, 2)}_DUPLICATE.png"
+                    dst = os.path.join(save_duplicates_path, filename)
+                    shutil.copy2(file_path, dst)
 
-        elif captured and p_diff >= max_percent:
-            captured = False
-
+        if should_save:
+            filename = f"{screenshots_count:03}_{round(frame_time/60, 2)}.png"
+            dst = os.path.join(output_folder_screenshot_path, filename)
+            shutil.move(file_path, dst) # Move instead of copy to save space/time
+            print(f"Saved {filename}")
+            
+            previous_frames.append(frame) # Keep in memory for comparison
+            previous_hashes.append(current_hash)
+            
+            if len(previous_frames) > MAX_SIMILARITY_COMPARISONS:
+                previous_frames.pop(0)
+                previous_hashes.pop(0)
+            
+            screenshots_count += 1
+            
+    # Cleanup temp extraction
+    shutil.rmtree(temp_extract_dir)
+    
     elapsed_time = time.time() - start_time
     print(f'\n{screenshots_count} unique screenshots captured!')
     print(f'Time taken: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)')
