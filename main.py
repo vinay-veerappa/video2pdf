@@ -9,6 +9,7 @@ import sys
 import argparse
 import glob
 import re
+import webbrowser
 from pathlib import Path
 
 # Import modules
@@ -149,6 +150,12 @@ Examples:
         "--post-process",
         action="store_true",
         help="Analyze images and generate report for duplicates and irrelevant content (does not auto-delete)"
+    )
+    
+    parser.add_argument(
+        "--interactive",
+        action="store_true",
+        help="Pause for visual curation (Curator Grid) before generating final PDF"
     )
     
     parser.add_argument(
@@ -297,7 +304,7 @@ Examples:
             return
         
         # Analyze images if requested
-        if args.post_process:
+        if args.post_process and not args.interactive:
             analysis_result = analyze_images_comprehensive(
                 images_folder,
                 similarity_threshold=similarity_threshold,
@@ -311,6 +318,59 @@ Examples:
                 print(f"  - {len(analysis_result['irrelevant'])} potentially irrelevant")
                 print(f"  - {len(analysis_result['duplicates'])} duplicate groups")
                 print(f"\nPlease review the report: {analysis_result['report_path']}")
+        
+        # Interactive Curation Mode
+        if args.interactive:
+            print("\n" + "="*60)
+            print("INTERACTIVE CURATION MODE")
+            print("="*60)
+            print("Running deduplication analysis...")
+            
+            # Run image_dedup.py via subprocess to avoid state issues
+            import subprocess
+            
+            # We assume 'moderate' mode for interactive workflow
+            # Ensure we are using the optimized images if they exist
+            target_images = images_folder
+            
+            cmd = [
+                sys.executable,
+                os.path.join(os.path.dirname(__file__), "scripts", "image_dedup.py"),
+                target_images,
+                "--mode", "compare-all",
+                "--sequential",
+                "--crop-method", "content_aware",
+                "--crop-margin", "0.20"
+            ]
+            
+            try:
+                subprocess.run(cmd, check=True)
+                
+                report_path = os.path.join(target_images, "duplicates_report_combined.html")
+                if os.path.exists(report_path):
+                    print(f"\nOpening report: {report_path}")
+                    webbrowser.open(f"file://{os.path.abspath(report_path)}")
+                    
+                    print("\n" + "!"*60)
+                    print("ACTION REQUIRED:")
+                    print("1. Review images in the browser.")
+                    print("2. Click 'Download Move Script'.")
+                    print("3. Run the downloaded .bat file in the images folder.")
+                    print("!"*60)
+                    
+                    input("Press Enter AFTER you have run the batch script to continue...")
+                    
+                    # Check for curated folder
+                    curated_folder = os.path.join(target_images, "organized_moderate", "unique")
+                    if os.path.exists(curated_folder) and os.listdir(curated_folder):
+                        print(f"Found curated images in: {curated_folder}")
+                        images_folder = curated_folder # Update pointer for PDF generation
+                    else:
+                        print("Warning: Curated 'unique' folder not found. Using original images.")
+                else:
+                    print("Error: Report not generated.")
+            except Exception as e:
+                print(f"Error running interactive curation: {e}")
         
         # Optimize images (crop) if requested
         if args.optimize_images:
