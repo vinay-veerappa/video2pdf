@@ -120,8 +120,29 @@ def download_youtube_video(url, output_dir, cookies_path=None, progress_callback
     except Exception as e:
         print(f"Error downloading video: {e}")
         err_msg = str(e)
-        if "cookie database" in err_msg or "Sign in" in err_msg:
-             raise Exception("YouTube login failed. Please CLOSE YOUR BROWSER (Chrome) completely and try again, or provide a cookies.txt file.")
+        if "cookie database" in err_msg:
+             print("\n" + "!"*60)
+             print("CRITICAL ERROR: Chrome is locking the cookie database.")
+             print("PLEASE CLOSE ALL CHROME WINDOWS IMMEDIATELY.")
+             print("Retrying in 10 seconds...")
+             print("!"*60 + "\n")
+             import time
+             time.sleep(10)
+             # Retry once
+             try:
+                 with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                    info = ydl.extract_info(url, download=True)
+                    filename = ydl.prepare_filename(info)
+                    if 'merge_output_format' in ydl_opts:
+                        base, _ = os.path.splitext(filename)
+                        filename = base + '.mp4'
+                    return filename
+             except Exception as e2:
+                 raise Exception("Still cannot access cookies. Please close Chrome and try again.")
+        
+        if "Sign in" in err_msg:
+             raise Exception("YouTube login failed. Please provide a valid cookies.txt or ensure you are logged in to Chrome and it is closed.")
+             
         raise Exception(f"Failed to download video: {str(e)}")
 
 
