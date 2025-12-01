@@ -55,7 +55,6 @@
             font-weight: bold;
         }
 
-        /* States */
         .card.keep {
             border-color: #4CAF50;
             opacity: 1.0;
@@ -100,7 +99,6 @@
             background: #0056b3;
         }
 
-        /* Modal */
         .modal {
             display: none;
             position: fixed;
@@ -214,9 +212,7 @@
             } else {
                 item.status = 'keep';
             }
-            render(); // Re-render is expensive but simple. For 100 items it's fine.
-            // Optimization: Just update class and text of specific card
-            // But full render ensures sync.
+            render();
         }
 
         function openModal(src) {
@@ -239,9 +235,7 @@
                 .then(res => res.json())
                 .then(data => {
                     if (data.status === 'success') {
-                        // Redirect to Edit page (not implemented yet)
-                        // window.location.href = `/edit/${videoId}`;
-                        alert("Saved! Next step: Edit Transcript (Coming Soon)");
+                        window.location.href = `/edit/${videoId}`;
                     } else {
                         alert("Error saving");
                     }
