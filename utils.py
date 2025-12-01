@@ -2,7 +2,10 @@ import os
 import re
 import shutil
 import tempfile
-import browser_cookie3
+try:
+    import browser_cookie3
+except ImportError:
+    browser_cookie3 = None
 
 def is_youtube_url(url):
     """Check if the input is a YouTube URL"""
@@ -12,6 +15,15 @@ def is_youtube_url(url):
         r'(https?://)?(www\.)?youtu\.be/',
     ]
     return any(re.match(pattern, url) for pattern in youtube_patterns)
+
+
+def get_video_id(url):
+    """Extract video ID from YouTube URL"""
+    if 'watch?v=' in url:
+        return url.split('watch?v=')[1].split('&')[0].split('?')[0]
+    elif 'youtu.be/' in url:
+        return url.split('youtu.be/')[1].split('?')[0].split('&')[0]
+    return None
 
 
 def sanitize_filename(filename):
@@ -30,6 +42,10 @@ def sanitize_filename(filename):
 def get_youtube_cookies():
     """Extract YouTube cookies from browser"""
     print("Attempting to extract cookies from browser...")
+    if browser_cookie3 is None:
+        print("Warning: browser_cookie3 module not installed. Skipping cookie extraction.")
+        return None
+        
     cookies_file = os.path.join(tempfile.gettempdir(), 'youtube_cookies.txt')
     
     try:
