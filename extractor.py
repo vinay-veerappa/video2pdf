@@ -89,7 +89,7 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
         
         cmd = [
             "ffmpeg",
-            "-hwaccel", "auto", # Use GPU if available
+            "-hwaccel", "cuda", # Explicitly use NVIDIA CUDA
             "-i", video_path,
             "-vf", f"fps={frame_rate},scale='min(1920,iw)':-2", 
             "-vsync", "0",
@@ -101,14 +101,17 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
         
         # Check if ffmpeg is in path, otherwise try to find it or fail gracefully
         # We assume it is since we checked earlier.
-        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        try:
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except subprocess.CalledProcessError:
+            print("Warning: CUDA acceleration failed. Falling back to CPU extraction.")
+            # Remove -hwaccel cuda and retry
+            cmd = [c for c in cmd if c not in ["-hwaccel", "cuda"]]
+            subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        print("Warning: FFmpeg failed or not found. Falling back to OpenCV extraction.")
-        # Fallback to old method if FFmpeg fails? 
-        # For now, let's just raise error or we'd need to keep the old code.
-        # Given the user wants speed, let's assume FFmpeg works.
-        raise Exception("FFmpeg extraction failed. Please ensure FFmpeg is installed.")
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        print(f"Error: FFmpeg extraction failed: {e}")
+        raise Exception("FFmpeg extraction failed. Please ensure FFmpeg is installed and working.")
 
     # 2. Process extracted frames
     extracted_files = sorted(glob.glob(os.path.join(temp_extract_dir, "*.png")))
