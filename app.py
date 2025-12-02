@@ -73,6 +73,7 @@ def process_video():
     skip_download = data.get('skip_download') == 'true'
     skip_extraction = data.get('skip_extraction') == 'true'
     skip_deduplication = data.get('skip_deduplication') == 'true'
+    auto_crop = data.get('auto_crop') == 'true'
     download_transcript = data.get('download_transcript') == 'true'
     
     if not url and not existing_video_id:
@@ -82,7 +83,7 @@ def process_video():
     job_id = "job_" + str(len(JOBS) + 1)
     JOBS[job_id] = {'status': 'processing', 'log': [], 'message': 'Starting...', 'percent': 0}
     
-    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication, download_transcript))
+    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication, download_transcript, auto_crop))
     thread.start()
     
     return jsonify({'job_id': job_id})
@@ -97,7 +98,7 @@ from scripts import image_dedup
 from main import process_video_workflow
 from scripts import image_dedup
 
-def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False, skip_deduplication=False, download_transcript=True):
+def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False, skip_deduplication=False, download_transcript=True, auto_crop=False):
     """
     Run the extraction and deduplication pipeline.
     """
@@ -169,6 +170,31 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
         
         images_folder = result['images_folder']
         video_name = result['video_name']
+        
+        # 1.5 Auto-Crop if requested
+        if auto_crop:
+            JOBS[job_id]['status'] = 'cropping'
+            JOBS[job_id]['message'] = 'Auto-cropping images...'
+            JOBS[job_id]['percent'] = 60
+            
+            print("Auto-cropping requested. Moving originals to raw/...")
+            raw_dir = os.path.join(images_folder, "raw")
+            os.makedirs(raw_dir, exist_ok=True)
+            
+            # Move all pngs to raw
+            pngs = glob.glob(os.path.join(images_folder, "*.png"))
+            if pngs:
+                for png in pngs:
+                    shutil.move(png, os.path.join(raw_dir, os.path.basename(png)))
+                
+                # Run optimization/cropping
+                from scripts import optimize_images
+                print("Running optimize_images...")
+                optimize_images.process_images(input_dir=raw_dir, output_dir=images_folder, crop=True)
+                print("Auto-cropping complete.")
+            else:
+                print("No images found to crop.")
+        
         
         JOBS[job_id]['status'] = 'analyzing'
         JOBS[job_id]['message'] = 'Starting image analysis and deduplication...'
@@ -272,6 +298,19 @@ def curate(video_id):
 @app.route('/image/<video_id>/<path:filename>')
 def serve_image(video_id, filename):
     images_dir = os.path.join(app.config['OUTPUT_FOLDER'], video_id, "images")
+    return send_from_directory(images_dir, filename)
+
+@app.route('/image_raw/<video_id>/<path:filename>')
+def serve_image_raw(video_id, filename):
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    images_dir = os.path.join(output_folder, "images")
+    raw_dir = os.path.join(images_dir, "raw")
+    
+    # Try to serve from raw first (original uncropped)
+    if os.path.exists(os.path.join(raw_dir, filename)):
+        return send_from_directory(raw_dir, filename)
+    
+    # Fallback to current images (if no raw exists yet)
     return send_from_directory(images_dir, filename)
 
 @app.route('/save_curation', methods=['POST'])
@@ -621,6 +660,81 @@ def delete_slide():
         return jsonify({'status': 'success'})
     else:
         return jsonify({'error': 'Image not found'}), 404
+
+@app.route('/re_dedupe', methods=['POST'])
+def re_dedupe():
+    data = request.json
+    video_id = data.get('video_id')
+    crop_box = data.get('crop_box') # [x, y, width, height]
+    
+    if not video_id or not crop_box:
+        return jsonify({'error': 'Missing data'}), 400
+        
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    images_dir = os.path.join(output_folder, "images")
+    raw_dir = os.path.join(images_dir, "raw")
+    
+    if not os.path.exists(images_dir):
+        return jsonify({'error': 'Images folder not found'}), 404
+        
+    try:
+        # 1. Backup current images to raw if raw doesn't exist (safety net)
+        # If raw exists, it means we have the original original.
+        # If raw doesn't exist, this is the first crop, so current images are original.
+        if not os.path.exists(raw_dir):
+            print("Creating backup of original images in raw/...")
+            os.makedirs(raw_dir, exist_ok=True)
+            current_images = glob.glob(os.path.join(images_dir, "*.png"))
+            for img in current_images:
+                shutil.copy2(img, os.path.join(raw_dir, os.path.basename(img)))
+                
+        # 2. Apply Crop IN-PLACE to current images
+        # User requested iterative cropping on current images.
+        from PIL import Image
+        x, y, w, h = crop_box
+        # Ensure integers
+        x, y, w, h = int(x), int(y), int(w), int(h)
+        
+        print(f"Applying crop to current images: x={x}, y={y}, w={w}, h={h}")
+        
+        images_to_process = glob.glob(os.path.join(images_dir, "*.png"))
+        for img_path in images_to_process:
+            try:
+                with Image.open(img_path) as img:
+                    # Crop
+                    # Box is (left, upper, right, lower)
+                    cropped_img = img.crop((x, y, x + w, y + h))
+                    cropped_img.save(img_path)
+            except Exception as e:
+                print(f"Error cropping {img_path}: {e}")
+                
+        # 3. Run Deduplication (Optional)
+        skip_dedupe = data.get('skip_dedupe', False)
+        
+        if not skip_dedupe:
+            import subprocess
+            print("Running deduplication on cropped images...")
+            
+            cmd = [
+                sys.executable,
+                os.path.join(os.path.dirname(__file__), "scripts", "image_dedup.py"),
+                images_dir,
+                "--mode", "compare-all",
+                "--sequential",
+                "--crop-method", "content_aware", 
+                "--crop-margin", "0.10",
+                "--skip-blanks"
+            ]
+            
+            subprocess.run(cmd, check=True)
+        else:
+            print("Skipping deduplication as requested.")
+        
+        return jsonify({'status': 'success'})
+        
+    except Exception as e:
+        print(f"Re-dedupe failed: {e}")
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)

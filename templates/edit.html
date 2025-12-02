@@ -228,6 +228,23 @@
         </div>
     </div>
 
+    <!-- Global Crop Modal -->
+    <div id="cropModal" class="modal">
+        <div class="modal-content" style="width: 800px; max-width: 90%;">
+            <h3>Set Global Crop</h3>
+            <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                Draw a box to define the area to keep. This crop will be applied to <strong>ALL</strong> slides.
+            </p>
+            <div class="crop-container">
+                <img id="crop-target" src="" alt="Crop Target">
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-secondary" onclick="closeCropModal()">Cancel</button>
+                <button class="btn" onclick="applyGlobalCrop()">Apply Crop</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         const videoId = "{{ video_id }}";
         // Data passed from backend: [{image: 'filename', timestamp: '00:00:00', text: '...'}, ...]

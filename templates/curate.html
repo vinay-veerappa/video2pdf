@@ -172,7 +172,54 @@
             font-size: 40px;
             cursor: pointer;
         }
+
+        /* Cropper & Loading */
+        .crop-container {
+            max-height: 500px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+
+        .crop-container img {
+            max-width: 100%;
+        }
+
+        #loadingOverlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.9);
+            z-index: 2000;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid var(--primary);
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+
+            100% {
+                transform: rotate(360deg);
+            }
+        }
     </style>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 
 <body>
@@ -200,6 +247,8 @@
                     style="width: 100px;">
             </div>
             <span id="count-display" style="margin-right: 15px; font-weight: 600;">0 kept</span>
+            <button class="btn" style="background-color: #64748b; margin-right: 10px;"
+                onclick="openCropModal()">Crop</button>
             <button class="btn" onclick="saveAndContinue()">Save & Continue</button>
         </div>
     </div>
@@ -209,6 +258,31 @@
     <div id="imgModal" class="modal">
         <span class="close" onclick="closeModal()">&times;</span>
         <img class="modal-content" id="modalImg">
+    </div>
+
+    <!-- Crop Modal -->
+    <div id="cropModal" class="modal">
+        <div class="modal-content" style="width: 800px; max-width: 90%; background: white; padding: 20px;">
+            <h3 style="margin-top: 0;">Crop Images</h3>
+            <p style="color: #666; font-size: 14px; margin-bottom: 15px;">
+                Draw a box to define the area to keep. This will crop <strong>ALL</strong> images in the current set.
+                <br>Deduplication will <strong>NOT</strong> be re-run.
+            </p>
+            <div class="crop-container">
+                <img id="crop-target" src="" alt="Crop Target">
+            </div>
+            <div style="text-align: right; margin-top: 20px;">
+                <button class="btn" style="background-color: #64748b;" onclick="closeCropModal()">Cancel</button>
+                <button class="btn" onclick="applyCrop()">Apply Crop</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div id="loadingOverlay">
+        <div class="spinner"></div>
+        <div style="font-size: 18px; font-weight: 600; color: var(--text);">Processing images...</div>
+        <div style="color: var(--text-muted); margin-top: 5px;">This may take a minute.</div>
     </div>
 
     <script>
@@ -229,6 +303,7 @@
 
         const grid = document.getElementById('grid');
         let selectedIndex = -1;
+        let cropper = null;
 
         function render() {
             grid.innerHTML = '';
@@ -336,6 +411,71 @@
             const el = document.getElementById(`card-${selectedIndex}`);
             if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
         });
+
+        // Crop Functions
+        const cropModal = document.getElementById('cropModal');
+        const cropTarget = document.getElementById('crop-target');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        function openCropModal() {
+            if (items.length === 0) return alert("No images available.");
+
+            // Use the first image as reference
+            // Use /image/ to ensure we crop the CURRENT image (iterative)
+            // Add timestamp to prevent caching
+            cropTarget.src = `/image/${videoId}/${items[0].name}?t=${new Date().getTime()}`;
+            cropModal.style.display = "block";
+
+            if (cropper) cropper.destroy();
+
+            cropper = new Cropper(cropTarget, {
+                viewMode: 1,
+                autoCropArea: 0.9,
+                zoomable: false
+            });
+        }
+
+        function closeCropModal() {
+            cropModal.style.display = "none";
+            if (cropper) {
+                cropper.destroy();
+                cropper = null;
+            }
+        }
+
+        function applyCrop() {
+            if (!cropper) return;
+
+            if (!confirm("This will crop all images in the current set.\n\nDeduplication will NOT be re-run.\n\nAre you sure?")) return;
+
+            const cropData = cropper.getData(true); // {x, y, width, height}
+
+            closeCropModal();
+            loadingOverlay.style.display = "flex";
+
+            fetch('/re_dedupe', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    crop_box: [cropData.x, cropData.y, cropData.width, cropData.height],
+                    skip_dedupe: true
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        window.location.reload();
+                    } else {
+                        alert("Error: " + data.error);
+                        loadingOverlay.style.display = "none";
+                    }
+                })
+                .catch(err => {
+                    alert("Network Error: " + err);
+                    loadingOverlay.style.display = "none";
+                });
+        }
 
         render();
     </script>

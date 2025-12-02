@@ -893,7 +893,7 @@ def find_duplicates_with_smart_crop(image_dir, threshold=10, blur_enabled=True, 
             
             images_data.append(res)
 
-    print(f"\n✓ Loaded {len(images_data)} images\n")
+    print(f"\nLoaded {len(images_data)} images\n")
     print("Comparing images...\n")
     
     duplicates = []
@@ -911,7 +911,7 @@ def find_duplicates_with_smart_crop(image_dir, threshold=10, blur_enabled=True, 
                 
                 if comp['is_duplicate']:
                     # It is a duplicate of the current reference
-                    print(f"Pair {len(duplicates)+1}: {images_data[current_ref_idx]['name']} ↔ {images_data[i]['name']}")
+                    print(f"Pair {len(duplicates)+1}: {images_data[current_ref_idx]['name']} <-> {images_data[i]['name']}")
                     print(f"  Reason: {comp['reason']} | Dist: {comp['score']}, Hist: {comp['histogram_similarity']:.3f}")
                     
                     duplicates.append({
@@ -950,7 +950,7 @@ def find_duplicates_with_smart_crop(image_dir, threshold=10, blur_enabled=True, 
     print(f"Found {len(duplicates)} duplicate pairs (out of {len(images_data) * (len(images_data)-1) // 2} possible pairs)\n")
     
     for idx, dup in enumerate(duplicates, 1):
-        print(f"Pair {idx}: {dup['image1']} ↔ {dup['image2']}")
+        print(f"Pair {idx}: {dup['image1']} <-> {dup['image2']}")
         print(f"  Distance: {dup['score']}, Histogram: {dup['histogram_similarity']:.3f}\n")
     
     return duplicates, images_data

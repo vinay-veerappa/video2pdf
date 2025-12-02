@@ -113,6 +113,7 @@
             display: flex;
             gap: 20px;
             margin-top: 10px;
+            flex-wrap: wrap;
         }
 
         .checkbox-label {
@@ -227,6 +228,13 @@
                 <label>YouTube URL</label>
                 <input type="text" id="urlInput" placeholder="https://www.youtube.com/watch?v=..." />
             </div>
+            <div class="form-group">
+                <div class="checkbox-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="autoCropNew"> Auto-Crop Borders
+                    </label>
+                </div>
+            </div>
         </div>
 
         <!-- Existing Project Tab -->
@@ -247,6 +255,9 @@
                     </label>
                     <label class="checkbox-label">
                         <input type="checkbox" id="skipExtraction"> Skip Extraction
+                    </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="autoCropExisting"> Auto-Crop Borders
                     </label>
                     <label class="checkbox-label">
                         <input type="checkbox" id="skipDeduplication"> Skip Deduplication
@@ -348,12 +359,17 @@
                 const url = document.getElementById('urlInput').value;
                 if (!url) return alert("Please enter a URL");
                 body.append('url', url);
+                body.append('auto_crop', document.getElementById('autoCropNew').checked);
+                body.append('skip_download', false);
+                body.append('skip_extraction', false);
+                body.append('download_transcript', true);
             } else {
                 const id = document.getElementById('projectSelect').value;
                 if (!id) return alert("Please select a project");
                 body.append('existing_video_id', id);
                 body.append('skip_download', document.getElementById('skipDownload').checked);
                 body.append('skip_extraction', document.getElementById('skipExtraction').checked);
+                body.append('auto_crop', document.getElementById('autoCropExisting').checked);
                 body.append('skip_deduplication', document.getElementById('skipDeduplication').checked);
                 body.append('download_transcript', document.getElementById('downloadTranscript').checked);
             }

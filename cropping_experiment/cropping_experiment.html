@@ -1,0 +1,70 @@
+
+    <html>
+    <head>
+        <style>
+            body { font-family: sans-serif; padding: 20px; }
+            table { border-collapse: collapse; width: 100%; }
+            th, td { border: 1px solid #ddd; padding: 8px; text-align: center; vertical-align: top; }
+            th { background-color: #f2f2f2; }
+            img { max-width: 400px; height: auto; display: block; margin: 0 auto; border: 1px solid #ccc; }
+            .meta { font-size: 12px; color: #555; margin-top: 5px; }
+        </style>
+    </head>
+    <body>
+        <h1>Image Cropping Experiment</h1>
+        <table>
+            <tr>
+                <th>Original</th>
+                <th>Detected Box</th>
+                <th>Auto-Cropped</th>
+            </tr>
+    
+        <tr>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 4 Day 1 - Candle Stick Science intro/images/000_0.02.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>000_0.02.png<br>1280x720</div>
+            </td>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/cropping_experiment/vis_000_0.02.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>Box: x=66, y=35, w=1143, h=645</div>
+            </td>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/cropping_experiment/crop_000_0.02.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>Result<br>1143x645</div>
+            </td>
+        </tr>
+        
+        <tr>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 4 Day 1 - Candle Stick Science intro/images/054_49.63.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>054_49.63.png<br>1280x720</div>
+            </td>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/cropping_experiment/vis_054_49.63.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>Box: x=72, y=35, w=1193, h=660</div>
+            </td>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/cropping_experiment/crop_054_49.63.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>Result<br>1193x660</div>
+            </td>
+        </tr>
+        
+        <tr>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 4 Day 1 - Candle Stick Science intro/images/094_64.55.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>094_64.55.png<br>1280x720</div>
+            </td>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/cropping_experiment/vis_094_64.55.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>Box: x=76, y=30, w=1189, h=660</div>
+            </td>
+            <td>
+                <img src='file:///C:/Users/vinay/video2pdf/cropping_experiment/crop_094_64.55.png' onclick="window.open(this.src, '_blank');">
+                <div class='meta'>Result<br>1189x660</div>
+            </td>
+        </tr>
+        
+        </table>
+    </body>
+    </html>
+    

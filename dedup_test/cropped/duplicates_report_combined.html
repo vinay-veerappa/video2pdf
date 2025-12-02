@@ -1,0 +1,698 @@
+<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+body { font-family: Arial; margin: 20px; background: #f5f5f5; }
+.tab { overflow: hidden; border: 1px solid #ccc; background-color: #f1f1f1; border-radius: 5px 5px 0 0; }
+.tab button { background-color: inherit; float: left; border: none; outline: none; cursor: pointer; padding: 14px 16px; transition: 0.3s; font-size: 17px; }
+.tab button:hover { background-color: #ddd; }
+.tab button.active { background-color: #2196F3; color: white; }
+.tabcontent { display: none; padding: 20px; border: 1px solid #ccc; border-top: none; background: white; border-radius: 0 0 5px 5px; }
+.group { background: white; margin: 20px 0; border: 1px solid #ddd; padding: 15px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+.group-images { display: flex; flex-wrap: wrap; gap: 15px; }
+.ref-container { text-align: center; width: 300px; border: 2px solid #2196F3; padding: 10px; background: #e3f2fd; }
+.dup-container { text-align: center; width: 250px; border: 1px solid #f44336; padding: 10px; background: #ffebee; }
+.blank-container { text-align: center; width: 250px; border: 1px solid #9e9e9e; padding: 10px; background: #eeeeee; display: inline-block; margin: 10px; vertical-align: top; }
+img { max-width: 100%; height: auto; border: 1px solid #eee; }
+.metrics { margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px; font-size: 0.8em; text-align: left; }
+.action-bar { position: sticky; top: 0; background: #333; color: white; padding: 15px; z-index: 100; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); }
+.btn { background: #2196F3; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px; font-size: 16px; }
+.btn:hover { background: #1976D2; }
+.checkbox-wrapper { margin-top: 5px; font-weight: bold; }
+.radio-wrapper { margin-top: 5px; font-size: 0.9em; color: #333; }
+.storyline-section { margin-top: 40px; border-top: 3px solid #333; padding-top: 20px; }
+.storyline-grid { display: flex; flex-wrap: wrap; gap: 10px; padding: 20px; }
+.card { border: 4px solid #ccc; border-radius: 8px; overflow: hidden; background: white; transition: all 0.2s; position: relative; display: flex; flex-direction: column; }
+.card.keep { border-color: #4CAF50; opacity: 1.0; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+.card.discard { border-color: #f44336; opacity: 1.0; background: #ffebee; }
+.card.blank { border-color: #E91E63; opacity: 1.0; background: #FCE4EC; }
+.card:hover { transform: translateY(-2px); box-shadow: 0 5px 15px rgba(0,0,0,0.2); opacity: 1.0; z-index: 10; }
+.card-img { flex-grow: 1; overflow: hidden; cursor: pointer; }
+.card-img img { width: 100%; height: 100%; object-fit: cover; }
+.card-footer { padding: 8px; font-size: 0.8em; border-top: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; font-weight: bold; }
+.keep .card-footer { background: #e8f5e9; color: #2e7d32; }
+.discard .card-footer { background: #ffebee; color: #c62828; }
+.blank .card-footer { background: #FCE4EC; color: #C2185B; }
+.status-badge { padding: 2px 6px; border-radius: 4px; font-weight: bold; font-size: 0.8em; text-transform: uppercase; border: 1px solid rgba(0,0,0,0.1); }
+.keep .status-badge { background: #c8e6c9; color: #2e7d32; }
+.discard .status-badge { background: #ffcdd2; color: #c62828; }
+.blank .status-badge { background: #F8BBD0; color: #C2185B; }
+.toolbar { position: sticky; top: 0; background: #333; color: white; padding: 10px 20px; z-index: 100; display: flex; gap: 20px; align-items: center; box-shadow: 0 2px 5px rgba(0,0,0,0.2); flex-wrap: wrap; }
+.toolbar-group { display: flex; align-items: center; gap: 10px; }
+input[type=range] { width: 150px; }
+/* Modal styles */
+.modal { display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.9); }
+.modal-content { margin: auto; display: block; max-width: 90%; max-height: 90vh; }
+.close { position: absolute; top: 15px; right: 35px; color: #f1f1f1; font-size: 40px; font-weight: bold; transition: 0.3s; cursor: pointer; }
+.close:hover, .close:focus { color: #bbb; text-decoration: none; cursor: pointer; }
+</style>
+<script>
+function openModal(src) {
+   var modal = document.getElementById("imgModal");
+   var modalImg = document.getElementById("img01");
+   modal.style.display = "block";
+   modalImg.src = src;
+}
+function closeModal() {
+   document.getElementById("imgModal").style.display = "none";
+}
+function openMode(evt, modeName) {
+  var i, tabcontent, tablinks;
+  tabcontent = document.getElementsByClassName("tabcontent");
+  for (i = 0; i < tabcontent.length; i++) { tabcontent[i].style.display = "none"; }
+  tablinks = document.getElementsByClassName("tablinks");
+  for (i = 0; i < tablinks.length; i++) { tablinks[i].className = tablinks[i].className.replace(" active", ""); }
+  document.getElementById(modeName).style.display = "block";
+  evt.currentTarget.className += " active";
+}
+function toggleCard(footer) {
+   // Toggle between keep and discard
+   var card = footer.closest(".card");
+   var checkbox = card.querySelector("input[type=checkbox]");
+   checkbox.checked = !checkbox.checked;
+   updateCardVisuals(card, checkbox.checked);
+}
+function updateCardVisuals(card, isKept) {
+   var badge = card.querySelector(".status-badge");
+   if (isKept) {
+       card.classList.remove("discard", "blank");
+       card.classList.add("keep");
+       badge.innerText = "KEEP";
+   } else {
+       card.classList.remove("keep");
+       // Determine if it was blank or duplicate based on original class or data attribute
+       // For simplicity, we just use "discard" style for all removed items
+       card.classList.add("discard");
+       badge.innerText = "DISCARD";
+   }
+   updateCounts();
+}
+function updateGridSize(val) {
+   var size = val + "px";
+   document.documentElement.style.setProperty("--card-width", size);
+   var cards = document.querySelectorAll(".card");
+   cards.forEach(c => c.style.width = size);
+}
+function toggleDiscarded(show) {
+   var discards = document.querySelectorAll(".card.discard, .card.blank");
+   discards.forEach(d => d.style.display = show ? "flex" : "none");
+}
+function updateCounts() {
+   // Update counts in toolbar if we add them
+}
+function generateScript(mode) {
+   var container = document.getElementById(mode);
+   var cards = container.querySelectorAll(".card");
+   var commands = [];
+   var baseDir = "organized_" + mode;
+   commands.push("@echo off");
+   commands.push("mkdir \"" + baseDir + "\\unique\"");
+   commands.push("mkdir \"" + baseDir + "\\duplicates\"");
+   commands.push("mkdir \"" + baseDir + "\\blanks\"");
+   
+   cards.forEach(function(card) {
+       var checkbox = card.querySelector("input[type=checkbox]");
+       var file = checkbox.value;
+       var isKept = checkbox.checked;
+       var originalType = card.dataset.type; // duplicate, blank, unique
+       
+       if (isKept) {
+           commands.push("copy \"" + file + "\" \"" + baseDir + "\\unique\\" + file + "\"");
+       } else {
+           // It is discarded. Move to appropriate folder.
+           var target = (originalType === "blank") ? "blanks" : "duplicates";
+           commands.push("copy \"" + file + "\" \"" + baseDir + "\\" + target + "\\" + file + "\"");
+       }
+   });
+   
+   var text = commands.join("\n");
+   var blob = new Blob([text], { type: "text/plain" });
+   var a = document.createElement("a");
+   a.href = URL.createObjectURL(blob);
+   a.download = "move_files_" + mode + ".bat";
+   a.click();
+}
+</script>
+</head><body>
+<h1>Deduplication Comparison Report</h1>
+<div class="tab">
+<button class="tablinks active" onclick="openMode(event, 'moderate')">MODERATE (54)</button>
+</div>
+<div id="moderate" class="tabcontent" style="display: block">
+<div class="toolbar">
+<div class="toolbar-group"><strong>MODERATE</strong></div>
+<div class="toolbar-group"><label>Size:</label><input type="range" min="100" max="400" value="200" oninput="updateGridSize(this.value)"></div>
+<div class="toolbar-group"><label><input type="checkbox" checked onchange="toggleDiscarded(this.checked)"> Show Discarded</label></div>
+<div class="toolbar-group"><button class="btn" onclick="generateScript('moderate')">Download Move Script</button></div>
+</div>
+<div class="storyline-grid">
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="000_0.02.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>000_0.02.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="000_0.02.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="001_0.48.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>001_0.48.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="001_0.48.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="002_0.63.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>002_0.63.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="002_0.63.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="003_1.04.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>003_1.04.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="003_1.04.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="004_1.13.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>004_1.13.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="004_1.13.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="005_2.19.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>005_2.19.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="005_2.19.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="007_2.43.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>007_2.43.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="007_2.43.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="009_5.63.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>009_5.63.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="009_5.63.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="011_6.33.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>011_6.33.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="011_6.33.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="012_14.93.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>012_14.93.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="012_14.93.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="013_15.86.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>013_15.86.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="013_15.86.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="015_16.35.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>015_16.35.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="015_16.35.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="016_16.57.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>016_16.57.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="016_16.57.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="017_16.65.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>017_16.65.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="017_16.65.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="018_17.13.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>018_17.13.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="018_17.13.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="019_17.62.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>019_17.62.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="019_17.62.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="022_20.99.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>022_20.99.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="022_20.99.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="023_21.03.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>023_21.03.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="023_21.03.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="024_21.94.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>024_21.94.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="024_21.94.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="026_22.53.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>026_22.53.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="026_22.53.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="027_22.96.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>027_22.96.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="027_22.96.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="028_23.47.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>028_23.47.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="028_23.47.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="029_24.18.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>029_24.18.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="029_24.18.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="032_27.73.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>032_27.73.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="032_27.73.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="033_27.98.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>033_27.98.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="033_27.98.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="034_28.53.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>034_28.53.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="034_28.53.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="035_31.95.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>035_31.95.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="035_31.95.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="037_35.25.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>037_35.25.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="037_35.25.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="038_35.65.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>038_35.65.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="038_35.65.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="040_35.97.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>040_35.97.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="040_35.97.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="041_36.15.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>041_36.15.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="041_36.15.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="042_36.84.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>042_36.84.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="042_36.84.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="043_37.22.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>043_37.22.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="043_37.22.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="044_40.23.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>044_40.23.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="044_40.23.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="045_40.33.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>045_40.33.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="045_40.33.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="047_40.77.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>047_40.77.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="047_40.77.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="048_41.23.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>048_41.23.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="048_41.23.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="051_45.58.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>051_45.58.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="051_45.58.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="053_49.27.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>053_49.27.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="053_49.27.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="054_49.63.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>054_49.63.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="054_49.63.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="055_49.73.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>055_49.73.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="055_49.73.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="056_49.85.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>056_49.85.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="056_49.85.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="057_49.93.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>057_49.93.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="057_49.93.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="058_51.04.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>058_51.04.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="058_51.04.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="059_51.29.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>059_51.29.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="059_51.29.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="060_51.38.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>060_51.38.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="060_51.38.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="061_51.43.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>061_51.43.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="061_51.43.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="062_51.48.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>062_51.48.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="062_51.48.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="063_51.76.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>063_51.76.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="063_51.76.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="064_52.28.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>064_52.28.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="064_52.28.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="065_52.63.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>065_52.63.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="065_52.63.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="067_53.33.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>067_53.33.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="067_53.33.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="068_54.03.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>068_54.03.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="068_54.03.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="069_54.73.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>069_54.73.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="069_54.73.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="070_55.13.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>070_55.13.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="070_55.13.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="071_55.34.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>071_55.34.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="071_55.34.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="072_55.53.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>072_55.53.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="072_55.53.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="073_55.57.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>073_55.57.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="073_55.57.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="074_55.65.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>074_55.65.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="074_55.65.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="075_55.72.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>075_55.72.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="075_55.72.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="076_55.92.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>076_55.92.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="076_55.92.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="077_56.07.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>077_56.07.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="077_56.07.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="078_56.63.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>078_56.63.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="078_56.63.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="079_56.79.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>079_56.79.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="079_56.79.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="080_57.34.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>080_57.34.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="080_57.34.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="081_57.48.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>081_57.48.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="081_57.48.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="082_58.44.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>082_58.44.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="082_58.44.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="083_59.35.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>083_59.35.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="083_59.35.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="084_59.58.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>084_59.58.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="084_59.58.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="085_59.64.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>085_59.64.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="085_59.64.png"  style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="086_59.73.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>086_59.73.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="086_59.73.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="087_60.23.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>087_60.23.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="087_60.23.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="088_61.33.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>088_61.33.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="088_61.33.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="089_61.37.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>089_61.37.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="089_61.37.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="090_61.43.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>090_61.43.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="090_61.43.png" checked style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="091_62.32.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>091_62.32.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="091_62.32.png" checked style="display:none">
+</div></div>
+<div class="card discard" data-type="duplicate" style="width: 200px;">
+<div class="card-img"><img src="092_62.43.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>092_62.43.png</span>
+<span class="status-badge">DUPLICATE</span>
+<input type="checkbox" value="092_62.43.png"  style="display:none">
+</div></div>
+<div class="card keep" data-type="unique" style="width: 200px;">
+<div class="card-img"><img src="094_64.55.png" onclick="openModal(this.src)"></div>
+<div class="card-footer" onclick="toggleCard(this)" style="cursor: pointer;" title="Click to Toggle Keep/Discard">
+<span>094_64.55.png</span>
+<span class="status-badge">KEEP</span>
+<input type="checkbox" value="094_64.55.png" checked style="display:none">
+</div></div>
+</div></div>
+<div id="imgModal" class="modal">
+<span class="close" onclick="closeModal()">&times;</span>
+<img class="modal-content" id="img01">
+</div>
+</body></html>
