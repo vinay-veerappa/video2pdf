@@ -249,6 +249,9 @@
                         <input type="checkbox" id="skipExtraction"> Skip Extraction
                     </label>
                     <label class="checkbox-label">
+                        <input type="checkbox" id="skipDeduplication"> Skip Deduplication
+                    </label>
+                    <label class="checkbox-label">
                         <input type="checkbox" id="downloadTranscript" checked> Download Transcript
                     </label>
                 </div>
@@ -324,11 +327,13 @@
                 // Auto-select options
                 document.getElementById('skipDownload').checked = project.has_video;
                 document.getElementById('skipExtraction').checked = project.has_images;
+                document.getElementById('skipDeduplication').checked = project.has_dedup;
                 document.getElementById('downloadTranscript').checked = !project.has_transcript;
             } else {
                 infoDiv.innerHTML = '';
                 document.getElementById('skipDownload').checked = false;
                 document.getElementById('skipExtraction').checked = false;
+                document.getElementById('skipDeduplication').checked = false;
                 document.getElementById('downloadTranscript').checked = true;
             }
         }
@@ -349,6 +354,7 @@
                 body.append('existing_video_id', id);
                 body.append('skip_download', document.getElementById('skipDownload').checked);
                 body.append('skip_extraction', document.getElementById('skipExtraction').checked);
+                body.append('skip_deduplication', document.getElementById('skipDeduplication').checked);
                 body.append('download_transcript', document.getElementById('downloadTranscript').checked);
             }
 

@@ -202,23 +202,29 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
             JOBS[job_id]['message'] = 'Deduplication complete!'
             JOBS[job_id]['percent'] = 95
         else:
-            print("Skipping deduplication as requested.")
-            JOBS[job_id]['message'] = 'Deduplication skipped - generating dummy results...'
-            JOBS[job_id]['percent'] = 85
-            # Generate dummy dedup_results.json so curation page works
-            # We treat all images as unique/kept for now, or just list them.
-            # curate.html expects: { 'blanks': [], 'duplicates': [], 'all_files': [...] }
-            all_files = sorted([os.path.basename(f) for f in glob.glob(os.path.join(images_folder, "*.png"))])
-            dummy_results = {
-                'blanks': [],
-                'duplicates': [],
-                'all_files': all_files
-            }
+            # Check if we can reuse existing results
             json_path = os.path.join(images_folder, "dedup_results.json")
-            with open(json_path, 'w') as f:
-                json.dump(dummy_results, f)
-            print(f"Created dummy results at {json_path}")
-            JOBS[job_id]['percent'] = 95
+            if os.path.exists(json_path):
+                 print(f"Skipping deduplication. Reusing existing results at {json_path}")
+                 JOBS[job_id]['message'] = 'Deduplication skipped - reusing existing results...'
+                 JOBS[job_id]['percent'] = 95
+            else:
+                 print("Skipping deduplication as requested. No existing results found.")
+                 JOBS[job_id]['message'] = 'Deduplication skipped - generating dummy results...'
+                 JOBS[job_id]['percent'] = 85
+                 # Generate dummy dedup_results.json so curation page works
+                 # We treat all images as unique/kept for now, or just list them.
+                 # curate.html expects: { 'blanks': [], 'duplicates': [], 'all_files': [...] }
+                 all_files = sorted([os.path.basename(f) for f in glob.glob(os.path.join(images_folder, "*.png"))])
+                 dummy_results = {
+                     'blanks': [],
+                     'duplicates': [],
+                     'all_files': all_files
+                 }
+                 with open(json_path, 'w') as f:
+                     json.dump(dummy_results, f)
+                 print(f"Created dummy results at {json_path}")
+                 JOBS[job_id]['percent'] = 95
         
         JOBS[job_id]['status'] = 'ready_for_curation'
         JOBS[job_id]['message'] = 'Ready for curation!'
@@ -574,6 +580,47 @@ def cleanup_files(video_id):
         'deleted_count': deleted_count,
         'reclaimed_space': format_size(reclaimed_bytes)
     })
+
+@app.route('/delete_slide', methods=['POST'])
+def delete_slide():
+    data = request.json
+    video_id = data.get('video_id')
+    image_filename = data.get('image')
+    
+    if not video_id or not image_filename:
+        return jsonify({'error': 'Missing data'}), 400
+        
+    output_folder = os.path.join(app.config['OUTPUT_FOLDER'], video_id)
+    
+    # Try to find the image in likely locations
+    possible_paths = [
+        os.path.join(output_folder, "images", "organized_moderate", "unique", image_filename),
+        os.path.join(output_folder, "images", image_filename)
+    ]
+    
+    deleted = False
+    for path in possible_paths:
+        if os.path.exists(path):
+            try:
+                # Option 1: Delete permanently
+                # os.remove(path)
+                
+                # Option 2: Move to a "trash" folder (safer)
+                trash_dir = os.path.join(output_folder, "images", "trash")
+                os.makedirs(trash_dir, exist_ok=True)
+                shutil.move(path, os.path.join(trash_dir, image_filename))
+                
+                deleted = True
+                print(f"Moved slide to trash: {path}")
+                break
+            except Exception as e:
+                print(f"Error deleting slide {path}: {e}")
+                return jsonify({'error': str(e)}), 500
+                
+    if deleted:
+        return jsonify({'status': 'success'})
+    else:
+        return jsonify({'error': 'Image not found'}), 404
 
 if __name__ == '__main__':
     os.makedirs(OUTPUT_DIR, exist_ok=True)
