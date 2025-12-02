@@ -24,6 +24,11 @@ Open your browser to `http://localhost:5000`.
 **Workflow:**
 1.  **Start**: Enter a YouTube URL or select an existing project.
 2.  **Process**: The system downloads the video, extracts frames, and detects duplicates.
+    *   **Options**:
+        *   **Skip Video Download**: Use existing video file if available.
+        *   **Skip Extraction**: Use existing extracted images.
+        *   **Skip Deduplication**: Use existing deduplication results.
+        *   **Download Transcript**: Download subtitles/transcript from YouTube.
 3.  **Curate**: Review the extracted slides in the "Curate Slides" interface.
     *   **Green**: Kept slides.
     *   **Red**: Detected duplicates (discarded).

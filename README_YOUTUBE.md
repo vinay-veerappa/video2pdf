@@ -27,18 +27,18 @@ pip install -r requirements.txt
 
 **YouTube URL:**
 ```bash
-python youtube2pdf.py "https://www.youtube.com/watch?v=VIDEO_ID"
+python main.py "https://www.youtube.com/watch?v=VIDEO_ID"
 ```
 
 **Local Video File:**
 ```bash
-python youtube2pdf.py "./input/video.mp4"
+python main.py "./input/video.mp4"
 ```
 
 ### Advanced Options
 
 ```bash
-python youtube2pdf.py "YOUTUBE_URL_OR_PATH" [OPTIONS]
+python main.py "YOUTUBE_URL_OR_PATH" [OPTIONS]
 ```
 
 **Options:**
@@ -53,32 +53,32 @@ python youtube2pdf.py "YOUTUBE_URL_OR_PATH" [OPTIONS]
 
 **High quality extraction (slower but more accurate):**
 ```bash
-python youtube2pdf.py "https://youtu.be/VIDEO_ID" --frame-rate 10 --similarity-threshold 0.98
+python main.py "https://youtu.be/VIDEO_ID" --frame-rate 10 --similarity-threshold 0.98
 ```
 
 **Fast extraction (faster but may miss some slides):**
 ```bash
-python youtube2pdf.py "https://youtu.be/VIDEO_ID" --frame-rate 3 --similarity-threshold 0.90
+python main.py "https://youtu.be/VIDEO_ID" --frame-rate 3 --similarity-threshold 0.90
 ```
 
 **Disable similarity check (use only motion detection):**
 ```bash
-python youtube2pdf.py "./video.mp4" --no-similarity
+python main.py "./video.mp4" --no-similarity
 ```
 
 **Download transcript/subtitles (YouTube URLs only):**
 ```bash
-python youtube2pdf.py "https://youtu.be/VIDEO_ID" --download-transcript
+python main.py "https://youtu.be/VIDEO_ID" --download-transcript
 ```
 
 **Download transcript in specific language:**
 ```bash
-python youtube2pdf.py "https://youtu.be/VIDEO_ID" --download-transcript --transcript-lang es
+python main.py "https://youtu.be/VIDEO_ID" --download-transcript --transcript-lang es
 ```
 
 **Prefer auto-generated subtitles:**
 ```bash
-python youtube2pdf.py "https://youtu.be/VIDEO_ID" --download-transcript --prefer-auto-subs
+python main.py "https://youtu.be/VIDEO_ID" --download-transcript --prefer-auto-subs
 ```
 
 ## Output Structure
