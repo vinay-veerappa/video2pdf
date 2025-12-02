@@ -148,6 +148,26 @@
             text-align: right;
             margin-top: 20px;
         }
+
+        /* Image Preview */
+        #image-preview {
+            display: none;
+            position: fixed;
+            z-index: 2000;
+            border: 2px solid #fff;
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.5);
+            background: #000;
+            pointer-events: none;
+            /* Let mouse events pass through */
+            max-width: 600px;
+            max-height: 600px;
+        }
+
+        #image-preview img {
+            max-width: 100%;
+            max-height: 100%;
+            display: block;
+        }
     </style>
 </head>
 
@@ -179,6 +199,11 @@
 
     <div id="slides-container"></div>
 
+    <!-- Image Preview Container -->
+    <div id="image-preview">
+        <img id="preview-img" src="" alt="Preview">
+    </div>
+
     <!-- Search Modal -->
     <div id="searchModal" class="modal">
         <div class="modal-content">
@@ -209,6 +234,8 @@
         let slides = {{ slides| tojson | safe }};
 
         const container = document.getElementById('slides-container');
+        const previewContainer = document.getElementById('image-preview');
+        const previewImg = document.getElementById('preview-img');
 
         function render() {
             container.innerHTML = '';
@@ -222,7 +249,10 @@
                 row.className = 'slide-row';
                 row.innerHTML = `
                     <div class="slide-img">
-                        <img src="${slide.image_url}" alt="Slide ${index + 1}">
+                        <img src="${slide.image_url}" alt="Slide ${index + 1}" 
+                             onmouseover="showPreview('${slide.image_url}')" 
+                             onmouseout="hidePreview()" 
+                             onmousemove="movePreview(event)">
                     </div>
                     <div class="slide-content">
                         <div class="slide-meta">
@@ -234,6 +264,35 @@
                 `;
                 container.appendChild(row);
             });
+        }
+
+        function showPreview(url) {
+            previewImg.src = url;
+            previewContainer.style.display = 'block';
+        }
+
+        function hidePreview() {
+            previewContainer.style.display = 'none';
+        }
+
+        function movePreview(e) {
+            // Offset from cursor
+            const xOffset = 20;
+            const yOffset = 20;
+
+            let x = e.clientX + xOffset;
+            let y = e.clientY + yOffset;
+
+            // Check if preview goes off screen (simple check)
+            if (x + 400 > window.innerWidth) {
+                x = e.clientX - 420; // Move to left of cursor
+            }
+            if (y + 300 > window.innerHeight) {
+                y = e.clientY - 320; // Move above cursor
+            }
+
+            previewContainer.style.left = x + 'px';
+            previewContainer.style.top = y + 'px';
         }
 
         function updateText(index, newText) {
