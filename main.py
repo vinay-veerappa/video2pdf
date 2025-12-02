@@ -189,6 +189,10 @@ Examples:
         help="Method for duplicate detection (default: grid - 8x8 Grid SSIM)"
     )
     
+    parser.add_argument("--transcribe-method", choices=['whisper', 'gemini'], default='whisper', help="Method for local video transcription (default: whisper)")
+    parser.add_argument("--whisper-model", default='base', help="Whisper model size (tiny, base, small, medium, large)")
+    
+
     args = parser.parse_args()
     
     # Get parameters from arguments
@@ -252,16 +256,39 @@ Examples:
         # Download transcript if requested and it's a YouTube URL
         transcript_vtt = None
         transcript_txt = None
-        if args.download_transcript and is_youtube:
-            transcript_vtt, transcript_txt = download_youtube_transcript(
-                input_source,
-                output_folder,
-                lang=args.transcript_lang,
-                prefer_auto=args.prefer_auto_subs,
-                cookies_path=args.cookies
-            )
-        elif args.download_transcript and not is_youtube:
-            print("Warning: Transcript download is only available for YouTube URLs. Skipping transcript download.")
+        if args.download_transcript:
+            if is_youtube:
+                transcript_vtt, transcript_txt = download_youtube_transcript(
+                    input_source,
+                    output_folder,
+                    lang=args.transcript_lang,
+                    prefer_auto=args.prefer_auto_subs,
+                    cookies_path=args.cookies
+                )
+            else:
+                # Local video transcription
+                from transcript import transcribe_video_local
+                # Get API key if needed
+                api_key = None
+                if args.transcribe_method == 'gemini':
+                    api_key = os.environ.get("GEMINI_API_KEY")
+                    if not api_key:
+                        try:
+                            with open('generate_notes.py', 'r') as f:
+                                content = f.read()
+                                match = re.search(r'API_KEY\s*=\s*["\']([^"\']+)["\']', content)
+                                if match:
+                                    api_key = match.group(1)
+                        except:
+                            pass
+                            
+                transcript_txt = transcribe_video_local(
+                    video_path, 
+                    output_folder, 
+                    method=args.transcribe_method,
+                    model_size=args.whisper_model,
+                    api_key=api_key
+                )
         
         # If we skipped download or didn't request it, try to find existing transcript
         if not transcript_txt:
@@ -575,6 +602,37 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
             prefer_auto=options['prefer_auto_subs'],
             cookies_path=options['cookies']
         )
+    elif options['download_transcript'] and not is_youtube:
+        # Local video transcription
+        if video_path:
+            from transcript import transcribe_video_local
+            
+            # Get API key if needed (reuse logic from main or simple env check)
+            api_key = os.environ.get("GEMINI_API_KEY")
+            if not api_key:
+                try:
+                    # Try to find it in generate_notes.py as fallback
+                    with open('generate_notes.py', 'r') as f:
+                        content = f.read()
+                        match = re.search(r'API_KEY\s*=\s*["\']([^"\']+)["\']', content)
+                        if match:
+                            api_key = match.group(1)
+                except:
+                    pass
+                    
+            # Determine method (default to whisper if not specified in options, but options usually has defaults)
+            method = options.get('transcribe_method', 'whisper')
+            model_size = options.get('whisper_model', 'base')
+            
+            transcript_txt = transcribe_video_local(
+                video_path, 
+                output_folder, 
+                method=method,
+                model_size=model_size,
+                api_key=api_key
+            )
+        else:
+            print("Skipping local transcription (no video path available)")
     
     # Find existing transcript
     if not transcript_txt:

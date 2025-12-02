@@ -1465,6 +1465,7 @@ def parse_arguments():
     parser.add_argument('--debug', action='store_true')
     parser.add_argument('--detect-blank-first', action='store_true')
     parser.add_argument('--sequential', action='store_true', help="Use optimized sequential comparison (faster, assumes sorted)")
+    parser.add_argument('--skip-blanks', action='store_true', help="Skip blank image detection phase")
     parser.add_argument('--verify', type=str, help="Verify specific group (e.g. 'img1.png, img2.png, ...')")
     
     return parser.parse_args()
@@ -1707,8 +1708,13 @@ if __name__ == "__main__":
         print(f"Found {len(images)} images in {IMAGE_DIR}")
         
         # 1. Detect Blanks First
-        print("\n=== 1. DETECTING BLANK SLIDES ===")
-        blanks, _ = find_blank_images(IMAGE_DIR) # find_blank_images returns (blank_images, all_images_data)
+        if args.skip_blanks:
+            print("\n=== 1. SKIPPING BLANK DETECTION (Requested) ===")
+            blanks = []
+        else:
+            print("\n=== 1. DETECTING BLANK SLIDES ===")
+            blanks, _ = find_blank_images(IMAGE_DIR) # find_blank_images returns (blank_images, all_images_data)
+            
         blank_paths = {Path(b['path']) for b in blanks} # Convert to Path objects for comparison
         print(f"Found {len(blanks)} blank images. Excluding them from deduplication.")
         

@@ -446,3 +446,176 @@ def clean_transcript_text(text_or_lines):
         if isinstance(text_or_lines, list):
             return ' '.join(text_or_lines)
         return str(text_or_lines)
+
+
+def transcribe_video_local(video_path, output_folder, method='whisper', model_size='base', api_key=None):
+    """
+    Transcribe a local video file using either OpenAI Whisper (local) or Google Gemini (cloud).
+    
+    Args:
+        video_path (str): Path to the video file.
+        output_folder (str): Directory to save the transcript.
+        method (str): 'whisper' or 'gemini'.
+        model_size (str): Whisper model size ('tiny', 'base', 'small', 'medium', 'large').
+        api_key (str): Gemini API key (required if method='gemini').
+        
+    Returns:
+        str: Path to the generated transcript file.
+    """
+    print(f"\nTranscribing local video: {video_path}")
+    print(f"Method: {method}")
+    
+    transcripts_folder = os.path.join(output_folder, "transcripts")
+    os.makedirs(transcripts_folder, exist_ok=True)
+    
+    output_path = os.path.join(transcripts_folder, "transcript.txt")
+    
+    if os.path.exists(output_path):
+        print(f"Transcript already exists at: {output_path}")
+        return output_path
+
+    try:
+        if method == 'whisper':
+            return _transcribe_with_whisper(video_path, output_path, model_size)
+        elif method == 'gemini':
+            return _transcribe_with_gemini(video_path, output_path, api_key)
+        else:
+            raise ValueError(f"Unknown transcription method: {method}")
+            
+    except Exception as e:
+        print(f"Error during transcription: {e}")
+        import traceback
+        traceback.print_exc()
+        return None
+
+
+def _transcribe_with_whisper(video_path, output_path, model_size):
+    """Transcribe using OpenAI Whisper locally."""
+    try:
+        import whisper
+        import torch
+    except ImportError:
+        print("Error: 'openai-whisper' not installed. Please run: pip install openai-whisper")
+        return None
+
+    print(f"Loading Whisper model '{model_size}'...")
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using device: {device}")
+    
+    model = whisper.load_model(model_size, device=device)
+    
+    print("Transcribing audio (this may take a while)...")
+    # Whisper handles audio extraction from video automatically via ffmpeg
+    result = model.transcribe(video_path, verbose=False)
+    
+    # Format segments with timestamps
+    formatted_lines = []
+    for segment in result['segments']:
+        start = segment['start']
+        text = segment['text'].strip()
+        
+        # Format timestamp HH:MM:SS
+        hours = int(start // 3600)
+        minutes = int((start % 3600) // 60)
+        seconds = int(start % 60)
+        timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        
+        formatted_lines.append(f"[{timestamp}] {text}")
+        
+    with open(output_path, 'w', encoding='utf-8') as f:
+        f.write('\n'.join(formatted_lines))
+        
+    print(f"Transcription complete: {output_path}")
+    return output_path
+
+
+def _transcribe_with_gemini(video_path, output_path, api_key):
+    """Transcribe using Google Gemini API."""
+    try:
+        import google.generativeai as genai
+    except ImportError:
+        print("Error: 'google-generativeai' not installed.")
+        return None
+        
+    if not api_key:
+        print("Error: Gemini API key is required for Gemini transcription.")
+        return None
+        
+    genai.configure(api_key=api_key)
+    
+    print("Extracting audio for Gemini upload...")
+    # Extract audio to a temp file first (Gemini supports video, but audio is smaller/faster)
+    audio_path = os.path.join(os.path.dirname(output_path), "temp_audio.mp3")
+    
+    try:
+        cmd = [
+            "ffmpeg", "-y",
+            "-i", video_path,
+            "-vn", # No video
+            "-acodec", "libmp3lame",
+            "-q:a", "4",
+            audio_path
+        ]
+        subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        
+        print("Uploading audio to Gemini...")
+        myfile = genai.upload_file(audio_path)
+        
+        print("Waiting for file processing...")
+        import time
+        while myfile.state.name == "PROCESSING":
+            time.sleep(2)
+            myfile = genai.get_file(myfile.name)
+            
+        if myfile.state.name == "FAILED":
+            raise Exception("Gemini file processing failed.")
+            
+        print("Generating transcript...")
+        model = genai.GenerativeModel("gemini-2.5-flash-lite")
+        
+        prompt = """
+        Generate a detailed transcript for this audio. 
+        Format each line with a timestamp at the beginning in [HH:MM:SS] format.
+        Example:
+        [00:00:00] Hello and welcome to this video.
+        [00:00:05] Today we will discuss...
+        """
+        
+        # Configure generation to handle long transcripts
+        generation_config = genai.types.GenerationConfig(
+            max_output_tokens=65536,  # Increase token limit to max supported
+            temperature=0.2,         # Lower temperature for more accurate transcription
+        )
+        
+        response = model.generate_content(
+            [myfile, prompt],
+            generation_config=generation_config
+        )
+        
+        # Clean up response text (remove markdown code blocks if present)
+        text = response.text
+        if text.startswith("```"):
+            text = text.split("\n", 1)[1]
+        if text.endswith("```"):
+            text = text.rsplit("\n", 1)[0]
+            
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write(text)
+            
+        print(f"Transcription complete: {output_path}")
+        
+        # Cleanup
+        try:
+            os.remove(audio_path)
+            myfile.delete()
+        except:
+            pass
+            
+        return output_path
+        
+    except Exception as e:
+        print(f"Gemini transcription failed: {e}")
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
+        return None
+

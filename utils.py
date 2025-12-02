@@ -9,6 +9,8 @@ except ImportError:
 
 def is_youtube_url(url):
     """Check if the input is a YouTube URL"""
+    if not url:
+        return False
     youtube_patterns = [
         r'(https?://)?(www\.)?(youtube|youtu|youtube-nocookie)\.(com|be)/',
         r'(https?://)?(www\.)?youtube\.com/watch\?v=',

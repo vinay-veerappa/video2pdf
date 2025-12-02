@@ -154,9 +154,8 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
             
             if not input_source:
                  # Fallback to just using the folder name if we are skipping everything up to deduplication
-                 # But process_video_workflow needs a source.
-                 # Let's assume the user wants to resume.
-                 pass
+                 print(f"Warning: Could not find video file for {existing_video_id}. Assuming resume/skip_extraction.")
+                 input_source = existing_video_id
 
         result = process_video_workflow(
             input_source, 
@@ -194,7 +193,8 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
                 "--mode", "compare-all",
                 "--sequential",
                 "--crop-method", "content_aware",
-                "--crop-margin", "0.20"
+                "--crop-margin", "0.20",
+                "--skip-blanks"
             ]
             
             subprocess.run(cmd, check=True)

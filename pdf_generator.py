@@ -42,6 +42,10 @@ def sync_images_with_transcript(images_folder, transcript_file, output_folder, v
         
         # Parse transcript
         transcript_entries = []
+        if not transcript_file:
+            print("Warning: No transcript file provided. Skipping transcript sync.")
+            return None
+            
         with open(transcript_file, 'r', encoding='utf-8') as f:
             for line in f:
                 line = line.strip()
@@ -117,10 +121,21 @@ def sync_images_with_transcript(images_folder, transcript_file, output_folder, v
             
             img_seconds = timestamp_to_seconds(img_timestamp)
             
-            # Find transcript entries near this timestamp
+            # Determine time slot for this image
+            # It owns the transcript from its timestamp until the next image appears
+            start_seconds = img_seconds
+            
+            if image_idx < len(image_data) - 1:
+                next_timestamp = image_data[image_idx + 1][0]
+                end_seconds = timestamp_to_seconds(next_timestamp)
+            else:
+                # Last image gets everything until the end
+                end_seconds = float('inf')
+            
+            # Find transcript entries in this time slot
             for ts, text in transcript_entries:
                 ts_seconds = timestamp_to_seconds(ts)
-                if abs(ts_seconds - img_seconds) <= 30:  # Within 30 seconds
+                if start_seconds <= ts_seconds < end_seconds:
                     matching_transcript.append((ts, text))
             
             # Add image (Optimized)
@@ -213,6 +228,10 @@ def sync_images_with_transcript_docx(images_folder, transcript_file, output_fold
         # Parse transcript
         transcript_entries = []
         
+        if not transcript_file:
+            print("Warning: No transcript file provided. Skipping transcript sync (DOCX).")
+            return None
+            
         # Try different encodings
         content = None
         encodings = ['utf-8', 'utf-16', 'utf-16-le', 'utf-16-be', 'cp1252']
@@ -282,10 +301,21 @@ def sync_images_with_transcript_docx(images_folder, transcript_file, output_fold
             
             img_seconds = timestamp_to_seconds(img_timestamp)
             
-            # Find transcript entries near this timestamp
+            # Determine time slot for this image
+            # It owns the transcript from its timestamp until the next image appears
+            start_seconds = img_seconds
+            
+            if image_idx < len(image_data) - 1:
+                next_timestamp = image_data[image_idx + 1][0]
+                end_seconds = timestamp_to_seconds(next_timestamp)
+            else:
+                # Last image gets everything until the end
+                end_seconds = float('inf')
+            
+            # Find transcript entries in this time slot
             for ts, text in transcript_entries:
                 ts_seconds = timestamp_to_seconds(ts)
-                if abs(ts_seconds - img_seconds) <= 30:  # Within 30 seconds
+                if start_seconds <= ts_seconds < end_seconds:
                     matching_transcript.append((ts, text))
             
             # Add image (Optimized)
