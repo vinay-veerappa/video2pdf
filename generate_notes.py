@@ -4,9 +4,15 @@ import glob
 import google.generativeai as genai
 from PIL import Image
 import time
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Configuration
-API_KEY = "AIzaSyCq9gqX-5MLvlnrK58K-iP4-fPlUZEOxz8"
+API_KEY = os.getenv("GEMINI_API_KEY")
+if not API_KEY:
+    raise ValueError("GEMINI_API_KEY environment variable not set. Please set it in your .env file or environment.")
+
 MODEL_NAME = "gemini-2.5-flash"
 INPUT_DIR = r"C:\Users\vinay\video2pdf\output\Bootcamp Classroom - Week 7 Day 1 - 9_30 trade"
 OUTPUT_FILE = "generated_notes.md"
