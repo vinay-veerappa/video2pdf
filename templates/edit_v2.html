@@ -17,6 +17,8 @@
         body {
             font-family: 'Inter', sans-serif;
             padding: 20px;
+            padding-bottom: 80px;
+            /* Space for fixed bottom bar */
             background: var(--bg);
             color: var(--text);
             margin: 0;
@@ -43,6 +45,12 @@
             margin-bottom: 30px;
             overflow: hidden;
             border: 1px solid var(--border);
+            transition: border-color 0.2s;
+        }
+
+        .group-container.drag-over {
+            border: 2px dashed var(--primary);
+            background: #f0f9ff;
         }
 
         .group-header {
@@ -53,6 +61,28 @@
             color: #475569;
             display: flex;
             justify-content: space-between;
+            align-items: center;
+        }
+
+        .header-edit {
+            background: transparent;
+            border: 1px solid transparent;
+            font-weight: 600;
+            font-family: inherit;
+            color: inherit;
+            padding: 4px 8px;
+            border-radius: 4px;
+            cursor: text;
+        }
+
+        .header-edit:hover {
+            background: #e2e8f0;
+        }
+
+        .header-edit:focus {
+            outline: none;
+            background: white;
+            border-color: var(--primary);
         }
 
         /* Up/Down Layout */
@@ -69,6 +99,8 @@
             gap: 15px;
             border-bottom: 1px solid var(--border);
             background: #fafafa;
+            min-height: 100px;
+            /* target area for empty groups */
         }
 
         .img-card {
@@ -77,8 +109,12 @@
             overflow: hidden;
             border: 2px solid transparent;
             transition: all 0.2s;
-            cursor: pointer;
+            cursor: grab;
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .img-card:active {
+            cursor: grabbing;
         }
 
         .img-card:hover {
@@ -91,6 +127,8 @@
             display: block;
             aspect-ratio: 16/9;
             object-fit: cover;
+            pointer-events: none;
+            /* Prevent image drag interfering with card drag */
         }
 
         .remove-btn {
@@ -174,6 +212,36 @@
         .btn-secondary:hover {
             background: #475569;
         }
+
+        .btn-danger {
+            background: #ef4444;
+            padding: 4px 8px;
+            font-size: 12px;
+        }
+
+        .btn-danger:hover {
+            background: #dc2626;
+        }
+
+        .add-group-bar {
+            position: fixed;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            background: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.15);
+            border: 1px solid var(--border);
+        }
+
+        .add-group-btn {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 15px;
+        }
     </style>
 </head>
 
@@ -191,9 +259,10 @@
         </div>
     </div>
 
-    <div id="debug-log"
-        style="background:#fff3cd; color:#856404; padding:15px; border:2px solid #ffeeba; margin-bottom:20px; font-family:monospace; white-space:pre-wrap;">
-        Debug Log Initializing...
+    <div class="add-group-bar">
+        <button class="btn add-group-btn" onclick="addNewGroup()">
+            <span>+</span> Add New Group
+        </button>
     </div>
 
     <div id="main-container">
@@ -234,6 +303,10 @@
 
     <script>
         let videoId, groups;
+        // Drag state
+        let draggedImg = null;
+        let sourceGroupIdx = null;
+        let sourceImgIdx = null;
 
         try {
             // Read data from DOM attributes
@@ -243,6 +316,8 @@
 
             if (groupsRaw) {
                 groups = JSON.parse(groupsRaw);
+            } else {
+                groups = [];
             }
         } catch (e) {
             console.error("Critical error initializing data:", e);
@@ -426,33 +501,169 @@
 
         // --- End Crop Logic ---
 
+        // --- Group Management Logic --- //
+
+        function addNewGroup() {
+            groups.push({
+                time_range: 'New Group',
+                text: '',
+                images: [],
+                start_time: 0,
+                end_time: 0
+            });
+            render();
+            // Scroll to bottom
+            window.scrollTo(0, document.body.scrollHeight);
+        }
+
+        function deleteGroup(idx) {
+            if (!confirm("Delete this group? Images will be permanently removed unless moved first.")) return;
+            groups.splice(idx, 1);
+            render();
+        }
+
+        function updateGroupLabel(idx, val) {
+            groups[idx].time_range = val;
+        }
+
         function render() {
             container.innerHTML = '';
 
             groups.forEach((group, gIdx) => {
                 const groupDiv = document.createElement('div');
                 groupDiv.className = 'group-container';
+                groupDiv.dataset.groupIdx = gIdx;
+
+                // Drag & Drop Handlers for Container
+                groupDiv.ondragover = (e) => {
+                    e.preventDefault(); // Allow drop
+                    handleAutoScroll(e); // Ensure resize while hovering
+
+                    if (draggedGroupIdx !== null && draggedGroupIdx !== gIdx) {
+                        groupDiv.classList.add('drag-over');
+                    } else if (draggedImg !== null) {
+                        groupDiv.classList.add('drag-over');
+                    }
+                };
+
+                groupDiv.ondragleave = (e) => {
+                    groupDiv.classList.remove('drag-over');
+                }
+
+                groupDiv.ondrop = (e) => {
+                    e.preventDefault();
+                    // Stop bubbling if we implemented internal drops
+                    groupDiv.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+                    handleDrop(e, gIdx);
+                };
 
                 // Header
                 const header = document.createElement('div');
                 header.className = 'group-header';
-                header.innerHTML = `<span>Time: ${group.time_range}</span> <span>${group.images.length} Images</span>`;
+
+                // Left side: Drag Handle + Editable Title
+                const leftDiv = document.createElement('div');
+                leftDiv.style.display = 'flex';
+                leftDiv.style.alignItems = 'center';
+                leftDiv.style.gap = '10px';
+
+                // Drag Handle
+                const dragHandle = document.createElement('div');
+                dragHandle.className = 'drag-handle';
+                dragHandle.innerHTML = '&#8942;&#8942;'; // Dotted grip
+                dragHandle.style.cursor = 'grab';
+                dragHandle.style.color = '#cbd5e1';
+                dragHandle.style.fontSize = '20px';
+                dragHandle.style.lineHeight = '1';
+                dragHandle.title = "Drag to reorder group";
+
+                // Make Group Draggable ONLY via Handle
+                dragHandle.onmousedown = () => {
+                    groupDiv.draggable = true;
+                };
+
+                dragHandle.onmouseup = () => {
+                    groupDiv.draggable = false;
+                };
+
+                groupDiv.ondragstart = (e) => {
+                    // Differentiate Group Drag vs Image Drag
+                    draggedGroupIdx = gIdx;
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('type', 'group');
+                    setTimeout(() => groupDiv.style.opacity = '0.5', 0);
+                };
+
+                groupDiv.ondragend = (e) => {
+                    groupDiv.draggable = false;
+                    groupDiv.style.opacity = '1';
+                    draggedGroupIdx = null;
+                    document.querySelectorAll('.group-container').forEach(el => {
+                        el.classList.remove('drag-over', 'drag-over-top', 'drag-over-bottom');
+                    });
+                };
+
+                leftDiv.appendChild(dragHandle);
+
+                const titleInput = document.createElement('input');
+                titleInput.className = 'header-edit';
+                titleInput.value = group.time_range;
+                titleInput.onchange = (e) => updateGroupLabel(gIdx, e.target.value);
+
+                leftDiv.appendChild(titleInput);
+
+                // Right side controls
+                const rightDiv = document.createElement('div');
+                rightDiv.innerHTML = `<span>${group.images.length} Images</span> `;
+
+                const delBtn = document.createElement('button');
+                delBtn.className = 'btn btn-danger';
+                delBtn.innerText = 'Delete Group';
+                delBtn.style.marginLeft = '10px';
+                delBtn.onclick = () => deleteGroup(gIdx);
+
+                rightDiv.appendChild(delBtn);
+
+                header.appendChild(leftDiv);
+                header.appendChild(rightDiv);
+
                 groupDiv.appendChild(header);
 
                 const content = document.createElement('div');
                 content.className = 'group-content';
 
-                // 1. Image Grid (Top)
+                // 1. Image Grid (Top) - Drop Zone
                 const grid = document.createElement('div');
                 grid.className = 'image-grid';
 
                 if (group.images.length === 0) {
-                    grid.innerHTML = '<div style="color: #94a3b8; font-size: 13px; font-style: italic;">No images in this segment</div>';
+                    grid.innerHTML = '<div style="color: #94a3b8; font-size: 13px; font-style: italic; pointer-events: none;">Drop images here</div>';
                 }
 
                 group.images.forEach((img, iIdx) => {
                     const card = document.createElement('div');
                     card.className = `img-card ${img.removed ? 'removed' : ''}`;
+                    card.draggable = true;
+
+                    // Drag Start
+                    card.ondragstart = (e) => {
+                        e.stopPropagation(); // Prevent bubbling to group
+                        draggedImg = img;
+                        sourceGroupIdx = gIdx;
+                        sourceImgIdx = iIdx;
+                        e.dataTransfer.effectAllowed = 'move';
+                        e.dataTransfer.setData('type', 'image');
+                        setTimeout(() => card.style.opacity = '0.5', 0);
+                    };
+
+                    card.ondragend = (e) => {
+                        card.style.opacity = '1';
+                        draggedImg = null;
+                        sourceGroupIdx = null;
+                        sourceImgIdx = null;
+                    }
+
+                    // Click to open
                     card.onclick = (e) => {
                         if (e.target.tagName !== 'BUTTON') {
                             window.open(img.url, '_blank');
@@ -496,6 +707,56 @@
                 groupDiv.appendChild(content);
                 container.appendChild(groupDiv);
             });
+        }
+
+        // --- Auto Scroll Logic ---
+        function handleAutoScroll(e) {
+            const threshold = 100; // px from edge
+            const speed = 15; // px per frame
+
+            if (e.clientY < threshold) {
+                window.scrollBy(0, -speed);
+            } else if ((window.innerHeight - e.clientY) < threshold) {
+                window.scrollBy(0, speed);
+            }
+        }
+
+        function handleDrop(e, targetGroupIdx) {
+            e.preventDefault();
+            const type = e.dataTransfer.getData('type');
+
+            if (type === 'image') {
+                if (draggedImg === null || sourceGroupIdx === null) return;
+                if (sourceGroupIdx === targetGroupIdx) return;
+
+                const imgToMove = groups[sourceGroupIdx].images.splice(sourceImgIdx, 1)[0];
+                groups[targetGroupIdx].images.push(imgToMove);
+                render();
+            } else if (type === 'group') {
+                if (draggedGroupIdx === null || draggedGroupIdx === targetGroupIdx) return;
+
+                // Determine insertion point based on where the group was dropped
+                const targetGroupElement = document.querySelector(`[data-group-idx="${targetGroupIdx}"]`);
+                const rect = targetGroupElement.getBoundingClientRect();
+                const midY = rect.top + rect.height / 2;
+
+                let newIndex = targetGroupIdx;
+                if (e.clientY > midY) {
+                    // Dropped in the bottom half, insert after this group
+                    newIndex = targetGroupIdx + 1;
+                }
+
+                // Adjust index if dragging upwards
+                if (draggedGroupIdx < newIndex) {
+                    newIndex--;
+                }
+
+                // Move group
+                const groupToMove = groups.splice(draggedGroupIdx, 1)[0];
+                groups.splice(newIndex, 0, groupToMove);
+
+                render();
+            }
         }
 
         function toggleImage(gIdx, iIdx) {
