@@ -49,9 +49,9 @@
     - [x] Add drag handle to group header
     - [x] Make group containers sortable
     - [x] Update group order in data model
-- [ ] Update Save Logic
-    - [ ] Ensure empty groups are handled or cleaned up
-    - [ ] Persist custom group structure
+- [x] Update Save Logic
+    - [x] Ensure empty groups are handled or cleaned up
+    - [x] Persist custom group structure
 
 ## Phase 5: Project Cleanup
 - [x] Create `archive/` directory
@@ -66,6 +66,7 @@
 - [x] Delete "junk" from `archive/` (after confirmation)
 - [x] Update `README.md` to reference `docs/`
 - [x] Final verification of app functionality
+- [x] Create Git Tag `V1.0`
 - [x] **PDF Generation**
     - [x] Logic to flatten groups back to linear slides for PDF generation
     - [x] Verify PDF output quality
