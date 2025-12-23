@@ -51,6 +51,16 @@ python main.py <VIDEO_URL_OR_PATH> [OPTIONS]
 *   `--create-combined`: Generate a PDF file with synchronized transcript.
 *   `--optimize-images`: Resize and compress images to reduce output file size.
 
+## Project Structure
+
+This repository is organized as follows:
+- **`app.py`**: Main Flask web application.
+- **`main.py`**: CLI entry point.
+- **`scripts/`**: Utility scripts (e.g., `analyze_images.py`, `convert_md_to_docx.py`) and experimental tools.
+- **`docs/`**: Documentation files including testing guides and optimization reports.
+- **`experiments/`**: Source code for previous experiments (deduplication, compression).
+- **`archive/`**: Deprecated code and temporary files.
+
 ## Output Structure
 
 The tool organizes outputs into a structured folder:
@@ -66,3 +76,5 @@ output/
     ├── Video Title.docx        # Final DOCX
     └── metadata.txt            # Video metadata
 ```
+
+For more detailed documentation, please check the `docs/` folder.
