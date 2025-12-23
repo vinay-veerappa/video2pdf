@@ -1,0 +1,21 @@
+[00:00:15] Price is moving up.
+
+[00:00:44] The price logic is simple.
+
+[00:00:49] Cody is going to talk through how he uses his valid high, valid low, the strategy tester.
+
+[00:01:02] He is a live trader, active from 10:30 to 11:30 to 12.
+
+[00:01:18] Decision making should be mechanical, with trade decisions turned on and off, syncing the market environment and volatility conditions with the trades.
+
+[00:01:44]  There’s one strategy, the 9:30, that comes close to winning every day, despite market volatility. It’s often memorized for optimal execution.
+
+[00:02:06] Line up the market environment, volatility conditions, and trade it properly with this strategy.
+
+[00:02:28] The 9:30 strategy requires a "bare knuckle fist fight" and is high-hit rate, even though it's not the most enjoyable trade.
+
+[00:03:20] Target 50 to 60 after a valid low, with instant stop-outs when it doesn't hold.
+
+[00:04:04] Taking to talking to a soul.
+[00:04:06] Taking souls, but that’s a different story.
+[00:04:10] No. Anyways, yeah. So, um,

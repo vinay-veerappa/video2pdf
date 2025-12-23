@@ -233,7 +233,23 @@
                     <label class="checkbox-label">
                         <input type="checkbox" id="autoCropNew"> Auto-Crop Borders
                     </label>
+                    <label class="checkbox-label" style="margin-left: 20px;">
+                        <input type="checkbox" id="strictDedupNew"> Strict Deduplication
+                    </label>
                 </div>
+            </div>
+            <div class="form-group"
+                style="padding: 12px; background: #f0f7ff; border-radius: 8px; border: 1px solid #d0e7ff;">
+                <label style="color: #0369a1; font-weight: 600;">Advanced Technical Notes (Ollama)</label>
+                <div class="checkbox-group">
+                    <select id="ollamaCleanNew" style="padding: 8px; font-size: 14px; border-color: #bae6fd;">
+                        <option value="">-- None (Standard) --</option>
+                        <option value="condensed">Condensed Technical Notes</option>
+                        <option value="clean">Concise Textbook Style</option>
+                    </select>
+                </div>
+                <p style="font-size: 11px; margin-top: 5px; color: #0369a1; margin-bottom: 0;">Requires Ollama running
+                    with specialized trading jargon mapping.</p>
             </div>
         </div>
 
@@ -263,8 +279,25 @@
                         <input type="checkbox" id="skipDeduplication"> Skip Deduplication
                     </label>
                     <label class="checkbox-label">
+                        <input type="checkbox" id="strictDedupExisting"> Strict Deduplication
+                    </label>
+                    <label class="checkbox-label">
                         <input type="checkbox" id="downloadTranscript" checked> Download Transcript
                     </label>
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="cleanTranscript" checked> Clean Transcript with AI
+                    </label>
+                </div>
+            </div>
+            <div class="form-group"
+                style="padding: 12px; background: #f0f7ff; border-radius: 8px; border: 1px solid #d0e7ff;">
+                <label style="color: #0369a1; font-weight: 600;">Advanced Technical Notes (Ollama)</label>
+                <div class="checkbox-group">
+                    <select id="ollamaCleanExisting" style="padding: 8px; font-size: 14px; border-color: #bae6fd;">
+                        <option value="">-- None (Standard) --</option>
+                        <option value="condensed">Condensed Technical Notes</option>
+                        <option value="clean">Concise Textbook Style</option>
+                    </select>
                 </div>
             </div>
         </div>
@@ -276,6 +309,10 @@
             <div class="status-text">
                 <span id="statusMessage">Initializing...</span>
                 <span id="percentText">0%</span>
+            </div>
+            <div id="transcriptStatus" style="margin-top: 10px; font-size: 13px; color: #64748b; display: none;">
+                <span id="transcriptStatusIcon">🔄</span>
+                <span id="transcriptStatusText">Cleaning transcript...</span>
             </div>
         </div>
     </div>
@@ -360,18 +397,49 @@
                 if (!url) return alert("Please enter a URL");
                 body.append('url', url);
                 body.append('auto_crop', document.getElementById('autoCropNew').checked);
+                body.append('strict_dedup', document.getElementById('strictDedupNew').checked);
                 body.append('skip_download', false);
                 body.append('skip_extraction', false);
                 body.append('download_transcript', true);
+                const ollama = document.getElementById('ollamaCleanNew').value;
+                if (ollama) body.append('ollama_clean', ollama);
             } else {
                 const id = document.getElementById('projectSelect').value;
                 if (!id) return alert("Please select a project");
+
+                const project = projectsData.find(p => p.id === id);
+                let skipDownload = document.getElementById('skipDownload').checked;
+                let skipExtraction = document.getElementById('skipExtraction').checked;
+
+                // Error Check: If user wants to skip but files are missing
+                if (skipDownload && !project.has_video) {
+                    if (confirm("Video file is missing even though 'Skip Download' is checked. Download it now?")) {
+                        skipDownload = false;
+                        document.getElementById('skipDownload').checked = false;
+                    } else {
+                        return; // Abort
+                    }
+                }
+
+                if (skipExtraction && !project.has_images) {
+                    if (confirm("Images folder is missing or empty even though 'Skip Extraction' is checked. Generate them now?")) {
+                        skipExtraction = false;
+                        document.getElementById('skipExtraction').checked = false;
+                    } else {
+                        return; // Abort
+                    }
+                }
+
                 body.append('existing_video_id', id);
-                body.append('skip_download', document.getElementById('skipDownload').checked);
-                body.append('skip_extraction', document.getElementById('skipExtraction').checked);
+                body.append('skip_download', skipDownload);
+                body.append('skip_extraction', skipExtraction);
                 body.append('auto_crop', document.getElementById('autoCropExisting').checked);
                 body.append('skip_deduplication', document.getElementById('skipDeduplication').checked);
+                body.append('strict_dedup', document.getElementById('strictDedupExisting').checked);
                 body.append('download_transcript', document.getElementById('downloadTranscript').checked);
+                body.append('clean_transcript', document.getElementById('cleanTranscript').checked);
+                const ollama = document.getElementById('ollamaCleanExisting').value;
+                if (ollama) body.append('ollama_clean', ollama);
             }
 
             btn.disabled = true;
@@ -410,9 +478,14 @@
                             document.getElementById('percentText').innerText = data.percent + '%';
                         }
 
+                        // Check transcript cleaning status
+                        if (data.video_id) {
+                            checkTranscriptStatus(data.video_id);
+                        }
+
                         if (data.status === 'ready_for_curation') {
                             clearInterval(interval);
-                            window.location.href = '/curate/' + data.video_id;
+                            window.location.href = '/curate_v2/' + data.video_id;
                         } else if (data.status === 'error') {
                             clearInterval(interval);
                             alert("Error: " + data.error);
@@ -420,6 +493,34 @@
                         }
                     });
             }, 1000);
+        }
+
+        function checkTranscriptStatus(videoId) {
+            fetch(`/transcript_status/${videoId}`)
+                .then(res => res.json())
+                .then(data => {
+                    const statusDiv = document.getElementById('transcriptStatus');
+                    const iconSpan = document.getElementById('transcriptStatusIcon');
+                    const textSpan = document.getElementById('transcriptStatusText');
+
+                    if (data.cleaning) {
+                        statusDiv.style.display = 'block';
+                        iconSpan.textContent = '🔄';
+                        textSpan.textContent = 'Cleaning transcript...';
+                        textSpan.style.color = '#64748b';
+                    } else if (data.cleaned) {
+                        statusDiv.style.display = 'block';
+                        iconSpan.textContent = '✅';
+                        textSpan.textContent = 'Transcript cleaned!';
+                        textSpan.style.color = '#10b981';
+                    } else if (data.error) {
+                        statusDiv.style.display = 'block';
+                        iconSpan.textContent = '❌';
+                        textSpan.textContent = 'Cleaning error: ' + data.error;
+                        textSpan.style.color = '#ef4444';
+                    }
+                })
+                .catch(() => { }); // Silently fail if endpoint doesn't exist
         }
     </script>
 </body>

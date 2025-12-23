@@ -60,7 +60,7 @@ def get_content_bbox(img, threshold_ratio=0.1):
         
     return x_min, y_min, x_max - x_min, y_max - y_min
 
-def process_images(input_dir, output_dir=None, crop=False, compress=False, format='png'):
+def process_images(input_dir, output_dir=None, crop=False, compress=True, format='png'):
     """
     Process images: crop borders and/or compress.
     Uses a two-pass approach for cropping to ensure consistent slide sizes.

@@ -184,7 +184,14 @@
                 </svg>
                 Home
             </a>
-            <h2 style="margin: 0;">Edit Transcript</h2>
+            <div style="display: flex; flex-direction: column;">
+                <h2 style="margin: 0;">Edit Transcript</h2>
+                {% if transcript_name %}
+                <div style="font-size: 12px; color: #666; font-weight: 500; margin-top: 2px;">
+                    Using: <span style="color: #007bff;">{{ transcript_name }}</span>
+                </div>
+                {% endif %}
+            </div>
         </div>
         <div>
             <button class="btn btn-secondary" onclick="openSearchModal()">Search & Replace</button>
@@ -194,6 +201,18 @@
                 onclick="cleanupFiles()">Cleanup Unused Files</button>
             <div id="statusMessage"
                 style="margin-left: 15px; font-weight: bold; color: #28a745; display: inline-block;"></div>
+
+            <!-- Ollama Refinement Section -->
+            <div
+                style="display: inline-block; margin-left: 20px; padding: 5px 10px; background: #f0f7ff; border-radius: 6px; border: 1px solid #d0e7ff;">
+                <select id="ollamaStyle"
+                    style="padding: 5px; border-radius: 4px; border: 1px solid #bae6fd; font-size: 13px;">
+                    <option value="condensed">Condensed Notes</option>
+                    <option value="clean">Textbook Style</option>
+                </select>
+                <button class="btn btn-secondary" style="background-color: #0369a1; padding: 6px 12px; font-size: 13px;"
+                    onclick="refineWithAI()">Refine with AI (Ollama)</button>
+            </div>
         </div>
     </div>
 
@@ -525,6 +544,45 @@
                     status.style.color = "red";
                     btn.disabled = false;
                     btn.innerText = "Cleanup Unused Files";
+                });
+        }
+
+        function refineWithAI() {
+            const style = document.getElementById('ollamaStyle').value;
+            if (!confirm(`This will use Ollama to generate ${style} notes with specialized trading jargon mapping (MAE, FVG, etc).\n\nThis may take a minute. Proceed?`)) return;
+
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = "Refining...";
+            btn.disabled = true;
+
+            fetch('/clean_transcript_advanced', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    style: style,
+                    model: 'llama3'
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'started') {
+                        alert("Advanced cleaning started in background! This takes about 1-2 minutes. The page will reload when it likely finishes, or you can check back soon.");
+                        // Optional: Poll for completion or just wait
+                        setTimeout(() => {
+                            window.location.reload();
+                        }, 30000); // Reload after 30s as a hint
+                    } else {
+                        alert("Error: " + data.error);
+                        btn.innerText = originalText;
+                        btn.disabled = false;
+                    }
+                })
+                .catch(err => {
+                    alert("Network Error: " + err);
+                    btn.innerText = originalText;
+                    btn.disabled = false;
                 });
         }
 

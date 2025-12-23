@@ -1,0 +1,658 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curate Slides - Grouped</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --primary-hover: #1d4ed8;
+            --bg: #f8fafc;
+            --card-bg: #ffffff;
+            --text: #1e293b;
+            --keep-border: #22c55e;
+            --keep-bg: #f0fdf4;
+            --discard-border: #ef4444;
+            --discard-bg: #fef2f2;
+            --blank-border: #eab308;
+            --blank-bg: #fefce8;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            padding: 20px;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+        }
+
+        .header {
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .header-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .controls {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        .control-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            background: #f8fafc;
+            border-radius: 6px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(var(--card-width, 240px), 1fr));
+            gap: 20px;
+            padding-bottom: 40px;
+        }
+
+        .group-header {
+            grid-column: 1 / -1;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 16px 20px;
+            border-radius: 10px;
+            margin: 15px 0 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            color: white;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+        }
+
+        .group-header strong {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .group-actions {
+            display: flex;
+            gap: 8px;
+        }
+
+        .card {
+            border: 3px solid transparent;
+            border-radius: 12px;
+            overflow: hidden;
+            background: var(--card-bg);
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 16px rgba(0, 0, 0, 0.15);
+        }
+
+        .card.selected {
+            outline: 4px solid var(--primary);
+            outline-offset: 2px;
+        }
+
+        .card img {
+            width: 100%;
+            height: auto;
+            display: block;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+        }
+
+        .card-footer {
+            padding: 12px;
+            font-size: 13px;
+            display: flex;
+            justify-content: space-between;
+            font-weight: 600;
+        }
+
+        .card.keep {
+            border-color: var(--keep-border);
+        }
+
+        .card.keep .card-footer {
+            background: var(--keep-bg);
+            color: #15803d;
+        }
+
+        .card.discard {
+            border-color: var(--discard-border);
+            opacity: 0.7;
+        }
+
+        .card.discard .card-footer {
+            background: var(--discard-bg);
+            color: #b91c1c;
+        }
+
+        .card.blank {
+            border-color: var(--blank-border);
+            opacity: 0.6;
+        }
+
+        .card.blank .card-footer {
+            background: var(--blank-bg);
+            color: #854d0e;
+        }
+
+        .remove-btn {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            border: none;
+            width: 28px;
+            height: 28px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+            z-index: 10;
+            transition: all 0.2s;
+            opacity: 0;
+        }
+
+        .card:hover .remove-btn {
+            opacity: 1;
+        }
+
+        .remove-btn:hover {
+            background: #dc2626;
+            transform: scale(1.1);
+        }
+
+        .group-stats {
+            background: rgba(255, 255, 255, 0.2);
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 13px;
+            font-weight: 500;
+        }
+
+        .card.is-removed {
+            opacity: 0.2;
+            filter: grayscale(1);
+            pointer-events: none;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: var(--primary-hover);
+            transform: translateY(-1px);
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.9);
+        }
+
+        .modal-content {
+            margin: auto;
+            display: block;
+            max-width: 90%;
+            max-height: 90vh;
+            margin-top: 2vh;
+            border-radius: 8px;
+        }
+
+        .close {
+            position: absolute;
+            top: 20px;
+            right: 30px;
+            color: white;
+            font-size: 40px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+
+<body>
+    <div class="header">
+        <div class="header-top">
+            <div>
+                <h2 style="margin: 0;">Curate Slides (Grouped)</h2>
+                <div style="font-size: 12px; color: #64748b; margin-top: 5px;">Space: Toggle | Arrows: Move | Enter:
+                    View</div>
+            </div>
+            <a href="/" style="text-decoration: none; color: #64748b; font-weight: 600;">← Home</a>
+        </div>
+
+        <div class="controls">
+            <div class="control-group">
+                <label style="font-weight: 600; color: #64748b; font-size: 13px;">Group:</label>
+                <select id="groupInterval" onchange="applyGrouping()"
+                    style="padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px;">
+                    <option value="0">No Grouping</option>
+                    <option value="5" selected>5 minutes</option>
+                    <option value="10">10 minutes</option>
+                    <option value="15">15 minutes</option>
+                    <option value="30">30 minutes</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <label
+                    style="font-size: 13px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 6px;">
+                    <input type="checkbox" id="showAllToggle" onchange="applyGrouping()"
+                        style="width: 16px; height: 16px;">
+                    Show Junk
+                </label>
+            </div>
+
+            <div class="control-group">
+                <label style="font-size: 12px; font-weight: 600; color: #64748b;">Size</label>
+                <input type="range" id="sizeSlider" min="150" max="600" value="240" oninput="updateGridSize(this.value)"
+                    style="width: 100px;">
+            </div>
+
+            <span id="count-display" style="font-weight: 600; color: #1e293b;">0 kept</span>
+
+            <button class="btn" onclick="saveAndContinue()">Save & Continue</button>
+        </div>
+    </div>
+
+    {% if data.already_curated_count > 0 %}
+    <div
+        style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 12px 20px; margin-bottom: 20px;">
+        <strong style="color: #1e40af;">Progress:</strong>
+        <span style="color: #1e40af;">Already curated: {{ data.already_curated_count }} files</span>
+        <span style="color: #64748b; margin-left: 15px;">Remaining: {{ data.all_files|length }} files</span>
+    </div>
+    {% endif %}
+
+    <div class="grid" id="grid"></div>
+
+    <div id="imgModal" class="modal">
+        <span class="close" onclick="closeModal()">&times;</span>
+        <img class="modal-content" id="modalImg">
+    </div>
+
+    <script>
+        const videoId = "{{ video_id }}";
+        const data = {{ data | tojson | safe }};
+
+        const blanks = new Set(data.blanks);
+        const duplicates = new Set();
+        data.duplicates.forEach(d => duplicates.add(d.image2));
+
+        const items = data.all_files.map(filename => {
+            let status = 'keep';
+            let reason = 'Unique';
+            if (blanks.has(filename)) { status = 'blank'; reason = 'Blank'; }
+            else if (duplicates.has(filename)) { status = 'discard'; reason = 'Duplicate'; }
+            return { name: filename, status: status, reason: reason, isRemoved: false };
+        });
+
+        const grid = document.getElementById('grid');
+        let selectedIndex = -1;
+        let groupInterval = 5;
+        let groups = [];
+
+        // Parse timestamp from filename (Handles both legacy and new formats)
+        function parseTimestamp(filename) {
+            const match = filename.match(/_([0-9\.]+)\.png/);
+            if (match) {
+                const val = parseFloat(match[1]);
+                // Heuristic: if there's a dot and the part after is small, it might be minutes (old format)
+                // New format is always raw seconds: 001_123.45.png
+                // Old format was: 001_2.30.png (2 min 30 sec)
+                if (match[1].includes('.') && val < 100) {
+                    const parts = match[1].split('.');
+                    return parseInt(parts[0]) * 60 + parseInt(parts[parts.length - 1]);
+                }
+                return val;
+            }
+            return 0;
+        }
+
+        // Group items by time interval
+        function groupItems(interval, itemsList) {
+            if (interval === 0) {
+                return [{ start: 0, end: Infinity, items: itemsList, index: 0 }];
+            }
+
+            const grouped = {};
+            itemsList.forEach(item => {
+                const timestamp = parseTimestamp(item.name);
+                const groupIndex = Math.floor(timestamp / (interval * 60));
+                if (!grouped[groupIndex]) {
+                    grouped[groupIndex] = {
+                        start: groupIndex * interval,
+                        end: (groupIndex + 1) * interval,
+                        items: [],
+                        index: groupIndex
+                    };
+                }
+                grouped[groupIndex].items.push(item);
+            });
+
+            return Object.values(grouped).sort((a, b) => a.start - b.start);
+        }
+
+        function applyGrouping() {
+            const showJunk = document.getElementById('showAllToggle').checked;
+            groupInterval = parseInt(document.getElementById('groupInterval').value);
+
+            let filteredItems = items;
+            if (!showJunk) {
+                filteredItems = items.filter(i => i.reason === 'Unique');
+            }
+
+            groups = groupItems(groupInterval, filteredItems);
+            selectedIndex = -1;
+            render();
+        }
+
+        function formatTime(minutes) {
+            const hrs = Math.floor(minutes / 60);
+            const mins = minutes % 60;
+            return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`;
+        }
+
+        function saveGroup(groupIdx) {
+            const group = groups[groupIdx];
+            const keeps = group.items.filter(i => i.status === 'keep').map(i => i.name);
+            const reviewed = group.items.map(i => i.name);
+
+            fetch('/save_curation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    keeps: keeps,
+                    reviewed: reviewed
+                })
+            })
+                .then(res => res.json())
+                .then(res => {
+                    if (res.status === 'success') {
+                        // Remove all reviewed items from our local master list
+                        const reviewedSet = new Set(reviewed);
+                        for (let i = items.length - 1; i >= 0; i--) {
+                            if (reviewedSet.has(items[i].name)) {
+                                items.splice(i, 1);
+                            }
+                        }
+                        applyGrouping();
+                        alert(`Saved ${keeps.length} slides. Group removed. ${items.length} left to review.`);
+                    } else {
+                        alert("Error: " + (res.error || "Unknown error"));
+                    }
+                })
+                .catch(err => {
+                    console.error("Save failed:", err);
+                    alert("Failed to save group.");
+                });
+        }
+
+        function selectAllInGroup(groupIdx) {
+            // Mark all as DISCARD (for quick rejection of entire group)
+            groups[groupIdx].items.forEach(item => {
+                item.status = 'discard';
+                item.reason = 'Discarded';
+            });
+            render();
+        }
+
+        function deselectAllInGroup(groupIdx) {
+            // Reset to original status and restore removed
+            groups[groupIdx].items.forEach(item => {
+                item.isRemoved = false;
+                if (item.reason === 'Unique' || item.reason === 'Discarded') {
+                    item.status = 'keep';
+                    item.reason = 'Unique';
+                } else if (item.reason === 'Blank') {
+                    item.status = 'blank';
+                } else {
+                    item.status = 'discard';
+                }
+            });
+            render();
+        }
+
+        function restoreRemovedInGroup(groupIdx) {
+            groups[groupIdx].items.forEach(item => {
+                item.isRemoved = false;
+            });
+            render();
+        }
+
+        function removeImage(globalIdx) {
+            let currentIdx = 0;
+            for (const group of groups) {
+                for (const item of group.items) {
+                    if (currentIdx === globalIdx) {
+                        item.isRemoved = true;
+                        item.status = 'discard';
+                        render();
+                        return;
+                    }
+                    currentIdx++;
+                }
+            }
+        }
+
+        function keepAllInGroup(groupIdx) {
+            // Mark all as KEEP and restore
+            groups[groupIdx].items.forEach(item => {
+                item.status = 'keep';
+                item.reason = 'Unique';
+                item.isRemoved = false;
+            });
+            render();
+        }
+
+        function render() {
+            grid.innerHTML = '';
+            let keptCount = 0;
+            let globalIndex = 0;
+
+            groups.forEach((group, groupIdx) => {
+                // Group header
+                if (groupInterval > 0) {
+                    const keepCount = group.items.filter(i => i.status === 'keep' && !i.isRemoved).length;
+                    const totalCount = group.items.length;
+
+                    const header = document.createElement('div');
+                    header.className = 'group-header';
+                    header.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 15px;">
+                            <strong>Group ${groupIdx + 1}: ${formatTime(group.start)} - ${formatTime(group.end)}</strong>
+                            <div class="group-stats">Keeping ${keepCount} of ${totalCount}</div>
+                        </div>
+                        <div class="group-actions">
+                            <button onclick="keepAllInGroup(${groupIdx})" class="btn btn-sm" style="background: #10b981;">Keep All</button>
+                            <button onclick="selectAllInGroup(${groupIdx})" class="btn btn-sm" style="background: #ef4444;">Discard All</button>
+                            <button onclick="restoreRemovedInGroup(${groupIdx})" class="btn btn-sm" style="background: #eab308;">Restore All</button>
+                            <button onclick="deselectAllInGroup(${groupIdx})" class="btn btn-sm" style="background: #64748b;">Reset</button>
+                            <button onclick="saveGroup(${groupIdx})" class="btn btn-sm" style="background: #8b5cf6;">Save Group</button>
+                        </div>
+                    `;
+                    grid.appendChild(header);
+                }
+
+                // Group items
+                group.items.forEach((item) => {
+                    if (item.status === 'keep' && !item.isRemoved) keptCount++;
+
+                    const card = document.createElement('div');
+                    card.className = `card ${item.status} ${globalIndex === selectedIndex ? 'selected' : ''} ${item.isRemoved ? 'is-removed' : ''}`;
+                    card.id = `card-${globalIndex}`;
+                    const currentGlobalIndex = globalIndex;
+
+                    // Prevent showing removed items unless we want a toggle for it
+                    // For now, let's keep them hidden but track count
+                    if (item.isRemoved) {
+                        globalIndex++;
+                        return;
+                    }
+
+                    card.onclick = (e) => {
+                        if (e.target.tagName === 'IMG') openModal(`/image/${videoId}/${item.name}`);
+                        else if (e.target.className === 'remove-btn') {
+                            removeImage(currentGlobalIndex);
+                        }
+                        else {
+                            selectedIndex = currentGlobalIndex;
+                            toggleStatus(currentGlobalIndex);
+                            render();
+                        }
+                    };
+
+                    card.innerHTML = `
+                        <button class="remove-btn" onclick="event.stopPropagation(); removeImage(${currentGlobalIndex})">&times;</button>
+                        <img src="/image/${videoId}/${item.name}" loading="lazy">
+                        <div class="card-footer">
+                            <span>${item.name}</span>
+                            <span>${item.status === 'keep' ? 'KEEP' : item.reason.toUpperCase()}</span>
+                        </div>
+                    `;
+                    grid.appendChild(card);
+                    globalIndex++;
+                });
+            });
+
+            document.getElementById('count-display').innerText = `${keptCount} kept`;
+
+            if (selectedIndex !== -1) {
+                const el = document.getElementById(`card-${selectedIndex}`);
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+            }
+        }
+
+        function toggleStatus(globalIdx) {
+            let currentIdx = 0;
+            for (const group of groups) {
+                for (const item of group.items) {
+                    if (currentIdx === globalIdx) {
+                        if (item.status === 'keep') {
+                            item.status = 'discard';
+                            item.reason = 'Discarded';
+                        } else {
+                            item.status = 'keep';
+                            item.isRemoved = false;
+                        }
+                        return;
+                    }
+                    currentIdx++;
+                }
+            }
+        }
+
+        function openModal(src) {
+            document.getElementById('modalImg').src = src;
+            document.getElementById('imgModal').style.display = "block";
+        }
+
+        function closeModal() {
+            document.getElementById('imgModal').style.display = "none";
+        }
+
+        function saveAndContinue() {
+            const keeps = items.filter(i => i.status === 'keep' && !i.isRemoved).map(i => i.name);
+            const reviewed = items.map(i => i.name); // Send ALL items currently in the list as reviewed
+            fetch('/save_curation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_id: videoId, keeps: keeps, reviewed: reviewed })
+            })
+                .then(res => res.json())
+                .then(result => {
+                    if (result.status === 'success') window.location.href = `/edit_v2/${videoId}`;
+                    else alert("Error saving");
+                });
+        }
+
+        function updateGridSize(val) {
+            document.documentElement.style.setProperty('--card-width', val + 'px');
+        }
+
+        // Keyboard Shortcuts
+        document.addEventListener('keydown', (e) => {
+            if (document.getElementById('imgModal').style.display === 'block') {
+                if (e.key === 'Escape') closeModal();
+                return;
+            }
+
+            if (selectedIndex === -1 && items.length > 0) selectedIndex = 0;
+
+            const cols = Math.floor(grid.clientWidth / 260);
+
+            if (e.key === 'ArrowRight') selectedIndex = Math.min(selectedIndex + 1, items.length - 1);
+            else if (e.key === 'ArrowLeft') selectedIndex = Math.max(selectedIndex - 1, 0);
+            else if (e.key === 'ArrowDown') selectedIndex = Math.min(selectedIndex + cols, items.length - 1);
+            else if (e.key === 'ArrowUp') selectedIndex = Math.max(selectedIndex - cols, 0);
+            else if (e.key === ' ') {
+                e.preventDefault();
+                toggleStatus(selectedIndex);
+            }
+            else if (e.key === 'Enter') {
+                let idx = 0;
+                for (const group of groups) {
+                    for (const item of group.items) {
+                        if (idx === selectedIndex) {
+                            openModal(`/image/${videoId}/${item.name}`);
+                            return;
+                        }
+                        idx++;
+                    }
+                }
+            }
+
+            render();
+
+            const el = document.getElementById(`card-${selectedIndex}`);
+            if (el) el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+        });
+
+        // Initialize
+        applyGrouping();
+    </script>
+</body>
+
+</html>

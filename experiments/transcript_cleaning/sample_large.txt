@@ -1,0 +1,100 @@
+﻿[00:00:00] Good morning.
+[00:00:02] >> Good morning.
+[00:00:04] >> What's up, Cody?
+[00:00:05] >> Oh, not much.
+[00:00:08] I showed up for Pocket because he was
+[00:00:10] clowning me yesterday. So, it was really
+[00:00:12] It's really just for Pocket.
+[00:00:15] [laughter]
+[00:00:15] >> Oh, yeah.
+[00:00:16] >> I'm just playing.
+[00:00:18] >> Who's he clowning you for?
+[00:00:20] >> Cuz I didn't show up yesterday.
+[00:00:22] >> Oh, nice.
+[00:00:24] >> Made one comment
+[00:00:27] to shame. [laughter]
+[00:00:29] I hold grudges, so I'm sorry.
+[00:00:31] >> Yeah, he's got blood wine.
+[00:00:35] >> Yep.
+[00:00:38] Anyway, good stuff. So, today, um,
+[00:00:41] Cody's going to talk through how he uses
+[00:00:44] his valid high, valid low, the strategy
+[00:00:47] tester.
+[00:00:49] Um,
+[00:00:50] you know, how he syncs it up with the
+[00:00:52] hourlys, the data collection that he's
+[00:00:55] done. whatever he wants to talk about,
+[00:00:56] he's going to talk about. Um, one thing
+[00:01:00] about Cody, like if you guys haven't
+[00:01:02] already know, he's a live trader.
+[00:01:04] Does the 10:30 to 11:30 to 12, if Austin
+[00:01:09] and myself can shut up quick enough on
+[00:01:12] our live trading. Uh-huh.
+[00:01:15] And the biggest thing is like, like I
+[00:01:18] said, I'm not I'm very big into,
+[00:01:22] you know,
+[00:01:24] your decision making area should your
+[00:01:27] analysis, I guess you could say, your
+[00:01:29] war game should always be mechanical,
+[00:01:32] >> right? And
+[00:01:35] but your trade decisions have to be
+[00:01:37] turned on and off, right? And there's
+[00:01:39] got to be a level of syncing the market
+[00:01:42] environment, the volatility conditions
+[00:01:44] with the trades you actually take.
+[00:01:47] And Cody, I I've tried to be honest with
+[00:01:51] you guys. I've tried so many times to
+[00:01:53] have find one strategy that I could
+[00:01:56] trade every single day and for it to win
+[00:02:01] and I would feel good, right? The 9:30
+[00:02:04] is the closest strategy I could do. No
+[00:02:06] matter what the market environment was,
+[00:02:08] no matter what the um
+[00:02:12] volatility conditions were like the 930
+[00:02:17] and one other strategy out there was
+[00:02:20] like that and it just happens to be
+[00:02:22] Cody's, right? And one thing that I do,
+[00:02:28] right, because it has such a freaking
+[00:02:30] high hit rate, and it's not the funnest
+[00:02:33] trade at all, it's um
+[00:02:37] I already have it memorized, so I
+[00:02:38] probably should put it on 50
+[00:02:43] and 60.
+[00:02:46] All of those strategies like you got to
+[00:02:49] line up the market environment, the
+[00:02:50] volatility conditions like and trade it
+[00:02:52] properly. with this the 930. In the 930
+[00:02:55] you got a bare knuckle fist fight too as
+[00:02:57] well. We've talked about that. Why isn't
+[00:03:00] the label showing? What the hell? I need
+[00:03:02] to update this.
+[00:03:05] And before we get into it, right? Like
+[00:03:08] >> it's it's above you. It says show labels
+[00:03:11] just above all that.
+[00:03:12] >> Ah, there it is.
+[00:03:17] right on the five minute chart targeting
+[00:03:20] 50 to 60 after you get a valid low has
+[00:03:23] is got such a [Â __Â ] high hit right and
+[00:03:26] when it doesn't you get stopped out
+[00:03:27] instantly like you did here and that's
+[00:03:30] all she wrote right um but yeah like
+[00:03:33] I'll stop blabbering on right and let
+[00:03:37] you take control of the class now and
+[00:03:39] I'll try not to interrupt you at all
+[00:03:42] not too much you know
+[00:03:43] >> feel free [laughter]
+[00:03:46] feel Three.
+[00:03:48] All right,
+[00:03:49] >> dude. You don't usually talk at this
+[00:03:51] time in the morning, do you?
+[00:03:52] >> No. No.
+[00:03:53] >> Dude, it it sounds like like you woke up
+[00:03:56] after smoking a pack of Marble Reds
+[00:03:58] overnight.
+[00:04:00] >> No. Typi typically at this time I have
+[00:04:02] headphones on at the gym and I'm not
+[00:04:04] taking to talking to a soul. I'm just
+[00:04:06] taking souls, but that's a different
+[00:04:07] story. Um,
+[00:04:10] no. Anyways, yeah. So, um,
+[00:04:15] you guys know that I have this one

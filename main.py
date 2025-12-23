@@ -22,7 +22,7 @@ from utils import (
     cleanup_temp_files
 )
 from downloader import download_youtube_video, get_video_title
-from transcript import download_youtube_transcript, clean_transcript_text
+from transcript import download_youtube_transcript, clean_transcript_text, clean_transcript_llm
 from extractor import detect_unique_screenshots
 from analyzer import analyze_images_comprehensive
 from pdf_generator import convert_screenshots_to_pdf, sync_images_with_transcript, sync_images_with_transcript_docx
@@ -137,6 +137,18 @@ Examples:
         "--clean-transcript",
         action="store_true",
         help="Create a cleaned transcript file with paragraphs and spell checking"
+    )
+
+    parser.add_argument(
+        "--ollama-clean",
+        choices=["condensed", "clean"],
+        help="Use Ollama to generate high-quality technical notes (requires Ollama running)"
+    )
+
+    parser.add_argument(
+        "--ollama-model",
+        default="llama3",
+        help="Ollama model to use for advanced cleaning (default: llama3)"
     )
     
     parser.add_argument(
@@ -263,7 +275,8 @@ Examples:
                     output_folder,
                     lang=args.transcript_lang,
                     prefer_auto=args.prefer_auto_subs,
-                    cookies_path=args.cookies
+                    cookies_path=args.cookies,
+                    output_filename=video_name
                 )
             else:
                 # Local video transcription
@@ -287,7 +300,8 @@ Examples:
                     output_folder, 
                     method=args.transcribe_method,
                     model_size=args.whisper_model,
-                    api_key=api_key
+                    api_key=api_key,
+                    output_filename=video_name
                 )
         
         # If we skipped download or didn't request it, try to find existing transcript
@@ -301,7 +315,7 @@ Examples:
             
             for t in possible_transcripts:
                 filename = os.path.basename(t)
-                if "cleaned" not in filename and "report" not in filename and "info" not in filename and "metadata" not in filename:
+                if any(x in filename for x in [video_name, "transcript"]) and "cleaned" not in filename and "ollama" not in filename and "report" not in filename and "info" not in filename and "metadata" not in filename:
                     transcript_txt = t
                     print(f"Found existing transcript: {transcript_txt}")
                     break
@@ -424,7 +438,7 @@ Examples:
         if args.clean_transcript and transcript_txt:
             print("\nCreating cleaned transcript...")
             try:
-                cleaned_transcript_path = os.path.join(output_folder, "transcript_cleaned.txt")
+                cleaned_transcript_path = os.path.join(output_folder, f"{video_name}_cleaned.txt")
                 
                 # Try different encodings
                 transcript_content = None
@@ -449,6 +463,21 @@ Examples:
                 print(f"Cleaned transcript saved to: {cleaned_transcript_path}")
             except Exception as e:
                 print(f"Warning: Could not create cleaned transcript: {e}")
+
+        # Advanced Ollama Cleaning
+        ollama_transcript_path = None
+        if args.ollama_clean and transcript_txt:
+            print("\nCreating advanced LLM-cleaned transcript (Ollama)...")
+            try:
+                ollama_transcript_path = os.path.join(output_folder, f"{video_name}_ollama_{args.ollama_clean}.txt")
+                clean_transcript_llm(
+                    transcript_txt, 
+                    ollama_transcript_path, 
+                    model=args.ollama_model, 
+                    style=args.ollama_clean
+                )
+            except Exception as e:
+                print(f"Warning: Could not create Ollama-cleaned transcript: {e}")
         
         # Create combined PDF if requested
         combined_pdf_path = None
@@ -496,6 +525,8 @@ Examples:
             print(f"Transcript (VTT) saved to: {transcript_vtt}")
         if cleaned_transcript_path:
             print(f"Cleaned transcript saved to: {cleaned_transcript_path}")
+        if ollama_transcript_path:
+            print(f"Ollama-cleaned transcript saved to: {ollama_transcript_path}")
         if combined_pdf_path:
             print(f"Combined PDF (images + transcript) saved to: {combined_pdf_path}")
         if combined_docx_path:
@@ -573,6 +604,16 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
     # Initialize output folders
     output_folder, images_folder = initialize_output_folder(video_name, output_dir)
     
+    # If we are only here to get the metadata/paths, we can return early
+    if kwargs.get('metadata_only'):
+        return {
+            'video_name': video_name,
+            'output_folder': output_folder,
+            'images_folder': images_folder,
+            'video_path': video_path,
+            'is_youtube': is_youtube
+        }
+    
     # Create video folder
     video_output_folder = os.path.join(output_folder, "video")
     os.makedirs(video_output_folder, exist_ok=True)
@@ -595,13 +636,21 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
     transcript_vtt = None
     transcript_txt = None
     if options['download_transcript'] and is_youtube:
-        transcript_vtt, transcript_txt = download_youtube_transcript(
-            input_source,
-            output_folder,
-            lang=options['transcript_lang'],
-            prefer_auto=options['prefer_auto_subs'],
-            cookies_path=options['cookies']
-        )
+        # Check if transcript already exists to avoid redundant downloads
+        transcripts_folder = os.path.join(output_folder, "transcripts")
+        expected_txt = os.path.join(transcripts_folder, f"{video_name}.txt")
+        if os.path.exists(expected_txt):
+            transcript_txt = expected_txt
+            print(f"Using existing transcript: {transcript_txt}")
+        else:
+            transcript_vtt, transcript_txt = download_youtube_transcript(
+                input_source,
+                output_folder,
+                lang=options['transcript_lang'],
+                prefer_auto=options['prefer_auto_subs'],
+                cookies_path=options['cookies'],
+                output_filename=video_name
+            )
     elif options['download_transcript'] and not is_youtube:
         # Local video transcription
         if video_path:
@@ -629,7 +678,8 @@ def process_video_workflow(input_source, output_dir=OUTPUT_DIR, progress_callbac
                 output_folder, 
                 method=method,
                 model_size=model_size,
-                api_key=api_key
+                api_key=api_key,
+                output_filename=video_name
             )
         else:
             print("Skipping local transcription (no video path available)")

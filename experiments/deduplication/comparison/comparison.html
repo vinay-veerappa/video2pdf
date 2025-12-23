@@ -1,0 +1,447 @@
+<html>
+
+<head>
+    <style>
+        body {
+            font-family: sans-serif;
+            padding: 20px;
+            background: #eef;
+        }
+
+        .section {
+            margin-bottom: 40px;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+
+        h2 {
+            border-bottom: 2px solid #ddd;
+            padding-bottom: 10px;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+        }
+
+        .card {
+            border: 1px solid #ccc;
+            padding: 10px;
+            border-radius: 4px;
+            background: #fff;
+        }
+
+        img {
+            max-width: 100%;
+            border: 1px solid #ddd;
+        }
+
+        .meta {
+            font-size: 0.85em;
+            color: #555;
+            margin-top: 5px;
+        }
+
+        .badge {
+            display: inline-block;
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-size: 0.75em;
+            font-weight: bold;
+        }
+
+        .badge-gain {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .badge-safety {
+            background: #fff3cd;
+            color: #856404;
+        }
+    </style>
+</head>
+
+<body>
+    <h1>Deduplication Comparison</h1>
+
+    <div class="section">
+        <h2>Efficiency Gain: Images OLD kept but NEW discarded (0)</h2>
+        <p>These are images the old algorithm thought were unique, but the New Algorithm flagged as duplicates (and
+            auto-discarded).</p>
+        <div class="grid">
+
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>Safety Net: Images NEW kept but OLD discarded (319)</h2>
+        <p>These are images the old algorithm discarded, but the New Algorithm flagged as Ambiguous (Needs Review) or
+            Unique.</p>
+        <div class="grid">
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>006_0.59.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure/images/006_0.59.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>007_0.68.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/007_0.68.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>011_1.07.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/011_1.07.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>012_1.17.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/012_1.17.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>022_2.15.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/022_2.15.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>023_2.24.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/023_2.24.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>024_2.34.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/024_2.34.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>026_2.53.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/026_2.53.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>027_2.63.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/027_2.63.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>028_2.73.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/028_2.73.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>029_2.83.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/029_2.83.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>030_2.92.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/030_2.92.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>031_3.02.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/031_3.02.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>032_3.12.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/032_3.12.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>033_3.22.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/033_3.22.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>034_3.31.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/034_3.31.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>035_3.41.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/035_3.41.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>036_3.51.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/036_3.51.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>037_3.61.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/037_3.61.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>038_3.71.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/038_3.71.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>039_3.8.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/039_3.8.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>045_4.39.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/045_4.39.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>046_4.49.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/046_4.49.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>047_4.58.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/047_4.58.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>048_4.68.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/048_4.68.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>049_4.78.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/049_4.78.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>050_4.88.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/050_4.88.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>056_5.46.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/056_5.46.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>059_5.75.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/059_5.75.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>061_5.95.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/061_5.95.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>062_6.04.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/062_6.04.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>063_6.14.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/063_6.14.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>064_6.24.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/064_6.24.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>065_6.34.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/065_6.34.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>070_6.83.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/070_6.83.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>071_6.92.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/071_6.92.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>072_7.02.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/072_7.02.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>073_7.12.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/073_7.12.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>074_7.21.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/074_7.21.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>075_7.31.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/075_7.31.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>076_7.41.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/076_7.41.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>078_7.61.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/078_7.61.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>079_7.7.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/079_7.7.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>080_7.8.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/080_7.8.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>081_7.9.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/081_7.9.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>085_8.29.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/085_8.29.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>086_8.38.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/086_8.38.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>087_8.48.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/087_8.48.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>088_8.58.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/088_8.58.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>089_8.68.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/089_8.68.png"
+                    loading="lazy">
+            </div>
+
+            <div class="card">
+                <div class="badge badge-safety">Safety Catch</div>
+                <div><strong>090_8.78.png</strong></div>
+                <img src="C:/Users/vinay/video2pdf/output/Bootcamp Classroom - Week 7 Day 4 - Cody Market Structure - Copy/images/090_8.78.png"
+                    loading="lazy">
+            </div>
+
+        </div>
+    </div>
+</body>
+
+</html>

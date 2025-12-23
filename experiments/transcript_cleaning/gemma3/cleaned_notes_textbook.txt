@@ -1,0 +1,9 @@
+[00:00:01] Analyze market structure.
+
+[00:00:15] The current price is interacting with the 200 Maximum Adverse Excursion (MAE) level and the associated order block.
+
+[00:00:30] A Doji candlestick pattern indicates market indecision.
+
+[00:00:45] Price action logic is predicated on identifying the Maximum Favorable Excursion (MFE).
+
+[00:01:00] Target a high Maximum Favorable Excursion (MFE) on the trade.

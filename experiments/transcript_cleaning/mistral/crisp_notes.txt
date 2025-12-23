@@ -1,0 +1,165 @@
+- Cody will discuss his strategy using Valid High, Valid Low, Strategy Tester.
+   - He syncs it with hourly charts and collects data for analysis.
+- Cody is a live trader and focuses on mechanical analysis but trade decisions need to be turned on/off based on market environment and volatility conditions.
+- The 9:30 strategy, which Cody uses, has a high hit rate and is not the most enjoyable trade. However, it's easy to memorize.
+- When the strategy doesn't work, Cody gets stopped out instantly.
+- To effectively trade with the 9:30 strategy, one must align market environment and volatility conditions.
+- Cody also built an indicator for this strategy, but it requires updates before being shared.
+
+- Core technical points:
+  1. Exit strategy is a common issue for traders, particularly determining optimal entry and exit points.
+  2. Mechanical strategies can be used for trading with high hit rates, but automating every valid point may result in significant losses during periods of high volatility.
+  3. Traders should consider the impact of volatility on their strategy's performance:
+     - Strategies tend to lose money during high volatility conditions when using breakouts or quarters as targets.
+     - Swing points (valid lows and highs) perform better in higher volatility conditions.
+  4. To optimize strategy performance during high volatility periods, consider trading only during these times.
+  5. When tracking a target (e.g., MF80 or MF50), larger candles in high volatility conditions can cause the target to be hit more quickly due to expanded data.
+  6. High volatility periods can be identified using market indicators like VIX.
+
+- Closer to confirmation, volatility conditions can be detected ([00:09:05])
+  - This provides a way to determine when volatility spikes occur ([00:09:14])
+  - High volatility conditions may indicate potential trade opportunities with MF 50-60 ([00:09:20])
+  - Strategy has a 75% hit rate but loses money ([00:09:27])
+  - Importance of understanding trading conditions ([00:09:34])
+- Need to identify optimal conditions and times for personal trading style ([00:10:17])
+  - Not trading during London sessions ([00:10:36])
+- Asia and 2am-3am hours may have the best performance due to higher volatility ([00:10:54])
+- Strategy works more often during high volatility conditions ([00:11:56])
+- Strategy is less effective during low volatility conditions ([00:12:00])
+- Strategy capitalizes on post-volatility spikes as markets return to normal ([00:12:13])
+- If DWP day and above 930, focus on looking for longs rather than shorts (common sense approach) ([00:12:40])
+
+- Strategy for trading green daily candles: Buy dips only, do not sell rips. This is a common habit among new traders.
+  - One of the filters for this strategy is being above 930, unless there are signs of an apex, the trader should be longing.
+  - Range days (days with multiple hits on the 50) are the best days as both sides hit more often than not.
+    - A net gain of 50 to 70 points can be achieved easily on such days with seven wins and two losses.
+
+- Strategy for trading DMP days:
+  - DMP days have characteristics that include breakers, rally highs, and instant stops for bear entries.
+  - An example was given of a first bearish entry that instantly reversed, which would have been a stopout for a short position if the trader's typical stop were in place.
+  - The upswings on DMP days are more violent compared to the down swings.
+  - On DMP or DWP style days, it is important to identify the daily classification as quickly as possible.
+
+- Importance of understanding and utilizing strategies based on market conditions for sustainable trading. [00:17:11]
+- Avoiding P&Ls resembling max pain, a year of volatility, and high loss-to-win ratios due to tilt, revenge, or strategy hopping trading behaviors. [00:17:23]
+- The relationship between these behaviors and bad trading habits that are concreted over time. [00:18:45]
+- Comparison of these strategies to the samurai's practice philosophy, emphasizing the importance of correct practices to avoid reinforcing bad habits. [00:19:03]
+- Discussion on filtering for specific market scenarios such as P12 mid:
+  - Highest time of occurrence for P12 mid is between 6-8:30, with 6:00 usually being the start. [00:20:17, 00:20:20]
+  - Building a strategy to play towards the P12 mid by entering earlier (e.g., 5:00) and using additional filters like Daily Profile (DP) for further analysis. [00:20:36, 00:20:48, 00:21:05]
+  - Marking the P12 mid on a chart as a reference line for trading decisions. [00:21:34]
+
+- Three-hour period analysis from 6:00 to 9:00:
+  - Rejected P12 mid ([HH:MM:SS]: 00:22:07)
+  - Formed valid low and rejected hourly high ([HH:MM:SS]: 00:22:35, 00:22:56)
+  - Q1 low retained ([HH:MM:SS]: 00:22:42)
+  - Climbed all the way to P12 ([HH:MM:SS]: 00:22:57)
+- Using these observations for trade plan formation:
+  - Possible occurrence frequency is high ([HH:MM:SS]: 00:23:02)
+- Analysis of a rejected P12 high:
+  - Failed to find a valid high on confirmation candle ([HH:MM:SS]: 00:23:14)
+- Combining technical indicators for more effective analysis:
+  - Daily classification ([HH:MM:SS]: 00:23:30, 00:25:02)
+  - P12 scenario ([HH:MM:SS]: 00:22:24)
+  - Candle science ([HH:MM:SS]: 00:24:16, 00:25:37)
+- Example of using these indicators:
+  - C2 open on daily candle ([HH:MM:SS]: 00:25:00)
+  - Breaching the line would have resulted in a next likely target ([HH:MM:SS]: 00:25:04)
+  - Rejecting it with a valid low on confirmation candle led to moving above 9:30 ([HH:MM:SS]: 00:25:16, 00:25:21)
+- Strategy tester is less important compared to aligning analysis with market conditions ([HH:MM:SS]: 00:25:28, 00:25:33)
+- Using technical indicators as a sentiment gauge:
+  - Three minutes chart primarily used for sentiment ([HH:MM:SS]: 00:25:48)
+  - Five-minute chart can be used for sentiment gauge ([HH:MM:SS]: 00:25:55)
+
+- Use RSI (Relative Strength Index) as a sentiment gauge to determine market strength:
+  * Look for valid highs or lows within the first 15 minutes of a candle.
+  * If the current candle cannot breach the previous hour's open, it is likely a DMP (Day Moving Parallel) day.
+  * This technique works better in high volatility conditions.
+- Use candle science to predict whether a day will be rangebound:
+  * If the current candle cannot get back to the previous hour's open and instead gets bought back up, it is likely a DMP day.
+- Utilize MF50 as targets for specific day classifications:
+  * Use MF50 as a target only on range one days.
+  * The MF50 does not expand on range one days, so look for bigger targets elsewhere.
+
+- Momentum has already started coming through in the market ([00:30:05])
+- Understanding daily classifications is crucial for trading, specifically identifying them quickly as it simplifies trading decisions ([00:31:42], [00:31:52])
+- The 9:30 hour can provide important price signatures to help determine the day's trade ([00:32:10])
+- Apex is a significant pattern to look for in R2, Q3 or Q4 ([00:32:42])
+- Fourstep reversal may be over by 10:10; waiting for the first five minutes of the hour to close and then looking for a breach of the previous 5-minute candle's range on the second 5-minute candle ([00:34:10], [00:34:33])
+- If the first five minutes of the 10 o'clock hour do not add up to 369, it is essential to pause and reconsider the trade ([00:34:20], [00:34:26])
+- The trader personally does not take any trades in the nine o'clock hour and waits for a valid high or low to form before entering ([00:33:30])
+
+- Analysis of trading patterns for higher probability lines or apexes based on the 9:30 open ([00:34:55])
+  - Identification of potential DMP (Double Maximum Probability) or Range One day by 10:10 if still inside the 5-minute range and unable to breach it ([00:35:20, 00:35:33])
+  - Signature of a line is not being able to get back below the opening price ([00:35:49, 00:35:51])
+- Waiting for confirmation before entering trades due to increased volatility during the 9:30 open and personal trading style ([00:36:17, 00:37:27])
+- Creation of a system that fits individual personality and trading style is crucial ([00:37:10, 00:37:14])
+- Emphasis on personal accountability for trading performance as it is a solo sport ([00:37:45, 00:37:46])
+- Use of the dump pouch for position sizing with risk per trade ranging from 3 to 350 ([00:38:28, 00:38:38])
+
+- Perfect three-hour line from 9 to 12 offers a low probability for trades ([00:39:13]).
+   - No specific edge for this time frame when comparing line versus apex.
+   - However, there is a slight edge for the time period of 12 to 15 with a range of 55-65% line ([00:40:36]).
+     - This edge is more likely due to the predominance of the afternoon session New York 2.
+   - The valid highs, lows, and day classifications are crucial for understanding trade patterns.
+     - In a DMP day, the 9 to 12 period is likely to be a line ([00:41:36]).
+     - In a range one day, it's more probable that it will be an apex ([00:41:43]).
+   - Day classification plays a significant role in determining the trade pattern.
+   - Trader's objective should be to filter high-probability trades with acceptable and sustainable expectancy over the long term.
+     - The trader's job is not to avoid losses but to execute the best they can based on their ability ([00:42:10, 00:42:16]).
+   - Even in drawdown or break-even stages, it doesn't mean that accounts have to be blown up ([00:42:39]).
+     - The few who might consider leaving would likely overreact and full-port their positions ([00:42:51]).
+
+- Significance of a three-hour line versus apex based on true and false ([00:42:59])
+  - Hours with higher probability of being "true" have higher probability of being the line (not specified)
+  - New York time frame has higher probability of the "false" and no edge ([00:43:16])
+- Focus on and teach pure New York one because it's the hardest scenario, but if understood correctly, can be fine in other three-hour periods (Asia, London, and New York two) ([00:43:29])
+- Practice the hardest scenario to get taught the hardest scenario possible ([00:43:45])
+- Decision-making needs to be at its highest during the New York hours due to the lack of edge and volatility ([00:43:53])
+- Position size may need to be lowered for trades between 9 to 12 due to increased risk ([00:44:40])
+- Become obsessed with one move or one thing, such as a three-hour line versus a three-hour apex ([00:45:01])
+- Develop two systems for trading: a mean reversion trade and a continuation style trade ([00:45:24])
+  - Mean reversion trade is a cash flow system, while a line trade is more extended.
+- Remove things you are not good at or do not like first to quickly figure out one thing ([00:46:06])
+
+- Embrace a long-term perspective in trading, do not stress about immediate success. [00:47:11]
+- If personal issues are impacting trading performance, address them before returning to trading. [00:47:17]
+- Building a trading model requires self-discovery and understanding one's own approach. [00:47:36]
+- Trading is not a game of sharing specific models or strategies; focus on mastering one's own method. [00:47:42]
+- Tailor trading ideas to personal preferences and backtest multiple approaches to find what works best. [00:48:35]
+- A strategy that doesn't feel right may not be the ideal fit, continue refining until a suitable approach is found. [00:48:40]
+- Live trading experience is essential for understanding personal reactions to market conditions. [00:49:10]
+- Observing and learning from successful traders can provide valuable insights, but ultimately one's own business plan must be executed. [00:49:56]
+- Understand one's own trading plan and become comfortable with potential market fluctuations. [00:50:23]
+- Support the success of others while focusing on executing one's own trading strategy. [00:50:30]
+
+- Importance of confidence in trade strategy, derived from experience managing consecutive losses and drawdowns. [00:50:51-00:51:01]
+- Emphasis on sticking to one strategy and understanding its nuances. [00:51:28-00:51:34, 00:51:32-00:51:34]
+- Discussion on the psychological aspect of trading, particularly fast-paced decision making and risk mitigation. [00:52:01-00:52:37]
+- The need for a personalized model or strategy that matches one's personality and strengths. [00:53:27-00:53:37, 00:53:29-00:53:33]
+- Mention of the importance of not breaking rules during consecutive loss periods and correct position sizing. [00:51:36-00:51:38, 00:53:39]
+- Creation of a boot camp to help individuals identify their strengths and build strategies that suit them. [00:53:42-00:53:45]
+- Example given of Twist, who trades the 930 with a low risk profile to match his personal strategy. [00:54:04-00:54:18]
+- Final point on the need for understanding and applying personal strategies to succeed in trading. [00:54:37-00:54:39]
+
+Technical terms used: Liquidity, Order Block, RSI, FVG, boot camp, risk profile.
+
+- Time commitment for building a trading plan: It may take months to years, not just two days or a week. ([00:54:39], [00:54:46])
+- Importance of testing the plan in various market conditions: Your plan will deteriorate during specific market conditions if it hasn't been properly tested. ([00:55:11], [00:55:18])
+- Data collection and understanding: Collecting a sufficient amount of data is crucial for understanding different market conditions, daily conditions, loss periods, and max drawdowns. ([00:55:30], [00:55:37])
+- Risk profile building: Build the risk profile behind your plan based on collected data and understanding. ([00:55:39])
+- Reviewing and adjusting the plan: Regularly review your plan every quarter or six months to evaluate its performance and make necessary adjustments. ([00:56:24], [00:56:37])
+- Avoid quick fixes and changes in strategy: Consistently trading for a short period without testing various market conditions will not yield successful results. ([00:56:40], [00:56:48])
+- Embrace the process and accept the time it takes: Peace comes from accepting that building a trading plan takes time, and there may be periods of losses before success is achieved. ([00:57:02], [00:57:06])
+
+- Visit the website for detailed trader schedule (00:59:31)
+  - Scheduled traders include Mr. Cody, Snipy, Trader Kenny, and possibly Pippy in future
+- Video about Jim Simons' quant strategy cannot be found but will be researched (01:00:21)
+- Scatter plot on Candle Science is already operational (01:01:30)
+  - Accessible by typing "Candle" and clicking on the percentage tool
+  - Initial setup requires API integration (01:01:40)
+  - Instructions provided in chat for those having trouble accessing the scatter plot (01:02:51)
+
+- [01:02:58] Discussion ends, moving on to the next subject
+- [01:03:00] Passing off a trade: Dress has presumably taken a long position and possibly reached Take Profit (TP)
+- [01:03:06] Apology for interrupting D's potential trade discussion

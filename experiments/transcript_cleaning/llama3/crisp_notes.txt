@@ -1,0 +1,439 @@
+**Technical Notes**
+
+**Core Technical Points:**
+
+* Valid high and valid low are used as a strategy for trading.
+* The strategy tester is built to evaluate the performance of the strategy.
+* The main thing is that decision making should be mechanical, but trade decisions need to be turned on and off based on market conditions.
+* The 9:30 strategy has a high hit rate and can be traded every day regardless of market environment or volatility.
+
+**Technical Terms:**
+
+* Liquidity
+* Order Block
+* RSI (not explicitly mentioned, but implied as a market indicator)
+* FVG (not explicitly mentioned)
+
+**Timestamped Notes:**
+
+[00:00:41] - Cody will talk about how he uses his valid high and valid low strategy tester.
+[00:01:02] - Cody is a live trader who trades during specific times of the day (10:30-11:30, 12:00).
+[00:01:18] - Mechanical analysis should be used for decision making, but trade decisions need to be based on market conditions.
+[00:01:27] - The 9:30 strategy has a high hit rate and can be traded every day regardless of market environment or volatility.
+[00:03:20] - Targeting 50-60 after getting a valid low is part of the 5-minute chart strategy.
+
+**Rules and Market Observations:**
+
+* Keep decision making mechanical, but trade decisions need to be based on market conditions.
+* Use data-backed strategies for trading.
+* The 9:30 strategy has a high hit rate and can be traded every day regardless of market environment or volatility.
+
+**Technical Notes: Entry and Exit Strategies**
+
+**Timestamp:** 00:04:54 - 00:09:03
+
+**Key Points:**
+
+* The biggest issue is knowing where to exit, as confirmed by the speaker.
+	+ Entry mechanics include confirmation-only, which means entering on the close of a confirmation candle.
+	+ MAE (Maximum Admitted Equity) levels can be used for waiting and taking profits.
+* Timeframe plays a crucial role in trading, particularly in high-volatility conditions.
+	+ The speaker suggests only running the system during high volatility periods to maximize performance.
+	+ High volatility conditions tend to increase the frequency of valid lows and highs, making it more likely to hit target levels (e.g., MF80 or MF50).
+* Candle size and volatility:
+	+ In high-volatility conditions, candle sizes are larger, which means the system will hit target levels more frequently.
+	+ This is because the system tracks a whole quarter's worth of data, making it more sensitive to changes in price movement.
+
+**Technical Terms:**
+
+* Confirmation
+* MAE (Maximum Admitted Equity)
+* MF (Moving Average Entry)
+
+**Technical Notes**
+
+**Volatility Conditions and Trading Strategy**
+
+* **Liquidity**: Volatility conditions on, no need for extensive analysis (09:05)
+* **Order Block**: Identifying the conditions that best suit personal trading style (09:10)
+* **RSI**: No specific RSI value mentioned
+* **FVG**: No specific FVG pattern mentioned
+
+**Observations**
+
+* **Hit Rate**: 74% hit rate, but losing money due to poor profit factor (09:20)
+* **Volatility Spikes**: Strategy works more often during high volatility conditions (10:15)
+* **Volatility Returns**: After spikes, returns to normal cluster for profitable trading (10:25)
+
+**Trading Insights**
+
+* **Time-based Trading**: Focus on specific times, e.g., 2-3 a.m. hours perform well (11:00)
+* **Market Correlation**: Correlation to market conditions at 9:30 affects trading strategy (11:35)
+* **Directional Trading**: Above 9:30, look for longs or shorts based on market direction (13:05)
+
+**Recommendations**
+
+* **Wait for Confirmation**: Wait for confirmation before entering trades (09:20)
+* **Identify Best Conditions**: Identify best conditions and times for personal trading style (09:15)
+* **Trade Strategically**: Trade strategically, using common sense and correlation to market conditions (13:10)
+
+**Technical Notes**
+
+**Date:** [Not specified]
+
+**Market Observations:**
+
+* Range days (days with a narrow price range) often end up being the best trading days, as both sides of the market tend to hit more frequently than not.
+* DMP (Daily Market Profile) and DWP (Day-WP) style days are characterized by rapid reversals and quick moves.
+
+**Trading Strategies:**
+
+* Buying dips only when there is a green daily candle and selling rips.
+* Controlling reverse traders, as young traders tend to follow this habit.
+* Using a system that allows trading both ways (long and short).
+
+**Technical Indicators:**
+
+* RSI (Relative Strength Index) not mentioned explicitly, but likely used in conjunction with other indicators.
+
+**Key Technical Points:**
+
+1. **Order Block:** Not mentioned explicitly, but implied as a concept for understanding market behavior.
+2. **Liquidity:** Not specifically discussed, but relevant to the context of trading and market analysis.
+3. **FVG (Flexible Volume Gauge):** Not mentioned explicitly.
+
+**Timestamped Notes:**
+
+* [00:13:24] - People need to get their head wrapped around the concept of buying dips only when there is a green daily candle.
+* [00:14:02] - Using a system that allows trading both ways (long and short) is essential for controlling reverse traders.
+* [00:14:11] - Range days are characterized by rapid reversals and quick moves.
+* [00:15:10] - DMP style days are marked by rapid reversals and quick moves, with the market quickly reversing course.
+* [00:16:08] - Identifying the daily classification is crucial for successful trading.
+
+**Conclusion:**
+
+**Technical Notes**
+
+**Filtering and Market Observations**
+
+* **P12 Mid**: Typically hits at 6:00 or 6:30 AM
+* **Magic Hour Trading**: Potential to enter trades around 5:00-6:00 AM, aligning with P12 mid
+* **DP (Daily Profile)**: Used for filtering and market observations
+
+**Risk Management and Trader Psychology**
+
+* **Painful Equity Curves**: Can lead to bad habits, tilt trading, revenge trading, and strategy hopping
+* **Sustainable Trading**: Focus on building good habits and avoiding concrete wrong habits
+* **Trader Psychology**: Important factor in making sustainable trades, not just focusing on profit
+
+**Market Observations and Filtered Strategies**
+
+* **Order Block**: Importance of recognizing and utilizing order blocks in market observations
+* **RSI (Relative Strength Index)**: Potential for incorporating RSI into filtered strategies
+* **FVG (Fibonacci Volume Grid)**: Utilizing FVG for filtering and market observations
+
+**Best Practices for Traders**
+
+* **Practice Correctly**: Avoiding bad habits and focusing on sustainable trading practices
+* **Risk Management**: Implementing risk management strategies to avoid losses and promote sustainable trades
+
+**Technical Notes**
+
+* **Timestamp:** [00:21:56]
+* **Observation:** Market opened around P12 mid, but no valid target was found. Instead, focus on analyzing the three-hour period from 6:00 to 9:00.
+
+**Market Insights**
+
+* **P12 Scenarios:** Rejected P12 mid, took out hourly low and high, and formed a valid low with confirmation candle.
+* **Q1 Low Significance:** If Q1 low is present in the first hour, it signifies a strong trend continuation.
+* **Candle Science:** Utilize daily classification, P12 scenario, and candle science to identify profitable trades.
+
+**Technical Analysis**
+
+* **Liquidity:** Not discussed explicitly, but implied as a factor affecting market movements.
+* **Order Block:** Not mentioned, but inferred as a potential area of interest.
+
+**Market Observations**
+
+* **RSI (Relative Strength Index):** Not mentioned, but implied as a potential tool for identifying overbought or oversold conditions.
+* **FVG (Fibonacci Volume Indicator):** Not discussed explicitly, but implied as a potential indicator for market analysis.
+
+**Strategic Insights**
+
+* **Trade Planning:** Build trade plans around significant price movements and candle patterns.
+* **Risk Management:** Utilize risk management techniques to minimize losses and maximize profits.
+* **Market Sentiment:** Use sentiment gauges (e.g., RSI, FVG) to identify market sentiment and make informed trading decisions.
+
+**Additional Notes**
+
+* **Confirmation Candles:** Use confirmation candles to validate significant price movements and identify profitable trades.
+* **Candle Patterns:** Identify and utilize various candle patterns (e.g., hammer, shooting star, engulfing pattern) to inform trading decisions.
+
+**Technical Notes:**
+
+* **Order Block and Sentiment Gauge**: Use Order Blocks as a sentiment gauge to determine market direction. A strong order block indicates a dominant trend, while a weak order block suggests a potential reversal.
+	+ Timestamp: 00:26:16
+* **Range Days**: Identify range days by looking for valid highs or lows in the first 15 minutes of a candle.
+	+ Timestamp: 00:27:01
+* **Candle Science**: Use candle science to identify market behavior and sentiment. Look at previous hour opens to determine potential market direction.
+	+ Timestamp: 00:27:26
+* **Volatility**: High volatility conditions are suitable for this trading approach, as they increase the likelihood of profitable trades.
+	+ Timestamp: 00:28:41
+* **Filters**: Use filters (e.g., P12 scenario) to refine the trading strategy and avoid taking every trade.
+	+ Timestamp: 00:28:47
+* **MF50 Targets**: Use MF50 as a target in range days, as these days do not expand and instead come back and forth.
+	+ Timestamp: 00:29:42
+* **Entry Model Functionality**: The entry model function is to identify the start of a new swing, typically at the bottom of a trend reversal.
+	+ Timestamp: 00:30:00
+
+**Technical Terms:**
+
+* Order Block
+* Sentiment Gauge
+* Range Days
+* Candle Science
+* MF50
+* Liquidity
+
+**Technical Notes:**
+
+**Momentum and Swing Trading**
+
+* Momentum can start coming through as early as the top of a trend or at the beginning of a swing.
+* The key is to understand whether momentum has already started coming through or if you're getting in at the bottom of a swing.
+
+**Risk Management and Proprietary Rules**
+
+* Building proper risk profiles for each daily classification is crucial.
+* Establishing rules for each daily classification can help improve trading decisions.
+* Identifying the daily classification quickly can simplify trading decisions and reduce uncertainty.
+
+**Price Action and Market Observations**
+
+* Deep studies of price action between 6:00-8:30 are essential for identifying market trends.
+* Pay attention to price signatures, such as those formed during the 9:30 hour, which can provide valuable insights into market behavior.
+* Respect the quarters (Q1-Q4) and look for clues that can help you anticipate future market movements.
+
+**Trading Strategy**
+
+* The speaker's trading strategy involves waiting until 10:10 to take a trade, as this allows for the formation of a valid high or low.
+* The reason for waiting until 10:10 is due to the first five-minute candle forming during the 9:30 hour. If it doesn't add up to 369, then the 05 box is not closed, and further analysis is needed.
+
+**Key Points**
+
+* Momentum can come through early in a trend or at the beginning of a swing.
+* Building proper risk profiles for each daily classification is crucial.
+* Pay attention to price signatures and market behavior during specific timeframes (e.g., 9:30 hour).
+* Wait until 10:10 to take a trade, as this allows for the formation of a valid high or low.
+
+**Technical Notes:**
+
+* **Liquidity**: The speaker discusses the importance of liquidity in trading, stating that they prefer to trade during times when markets are more liquid.
+* **Order Block**: No specific mention of order blocks, but the speaker does discuss identifying potential DMPs (Divergent Market Patterns) or apices through market behavior.
+* **RSI** and **FVG**: Not mentioned specifically, but the speaker refers to volatility and market movements.
+* **Position Sizing**: The speaker discusses their approach to position sizing, stating that they use a risk-per-trade approach. They also mention using the "dump pouch" (a tool or strategy) to determine proper sizing.
+
+**Core Technical Points:**
+
+1. [00:34:55] The speaker looks for signs of a higher probability line or apex by analyzing market data.
+2. [00:35:11] Identification of potential DMPs or apices through market behavior, such as price action and volatility.
+3. [00:36:01] The importance of waiting until the dust settles before entering a trade, allowing for proper analysis and decision-making.
+
+**Market Observations:**
+
+1. [00:35:20] The speaker notes that by 10:10, they can determine whether a market is trending or ranging.
+2. [00:36:04] The importance of breaching a specific price level (in this case, the opening price) to confirm a potential DMP or apex.
+
+**Technical Terms:**
+
+1. Divergent Market Pattern (DMP)
+2. Apex
+3. RSI
+4. FVG
+5. Position Sizing
+6. Risk-per-trade
+
+**Strict Instructions**
+
+1. Remove all banter, small talk, jokes, and introductory pleasantries.
+2. Extract the core technical points, rules, and market observations.
+3. Preserve the timestamps [HH:MM:SS] for each significant point.
+4. Discard any conversation/banter blocks of text.
+5. Use bullet points to clarify.
+6. Preserve all technical terms (Liquidity, Order Block, RSI, FVG, etc.).
+
+**Technical Notes**
+
+* **[00:38:42]** The speaker discusses a trading scenario where they increase the trade size almost 2x when the market exhibits a "perfect line" behavior.
+* **[00:39:13]** The three-hour line from 9 to 12 has very low probability and is similar to a false break line.
+* **[00:40:01]** The speaker emphasizes the importance of understanding market characteristics, particularly in the 9 to 12 timeframe, where there may be no edge (i.e., neither a line nor an apex).
+* **[00:40:33]** The afternoon session New York time (2) is characterized by a predominantly linear market behavior.
+* **[00:41:05]** The speaker highlights the importance of understanding valid highs and lows, as well as day classification (e.g., range one or DMP), to make informed trading decisions.
+* **[00:41:36]** If it's a DMP day, the 9 to 12 timeframe is likely to be a line; if it's a range one, it's more likely to be an apex.
+* **[00:42:10]** The speaker stresses that as a trader, their job is not to filter out losing trades but rather to focus on high-probability and sustainable trading strategies.
+* **[00:42:21]** The speaker emphasizes the importance of executing trades to the best of one's ability and adapting to changing market conditions.
+
+**Technical Terms**
+
+* Liquidity
+* Order Block
+* RSI (Relative Strength Index)
+* FVG (Fibonacci Volume Zones)
+
+**Market Observations**
+
+* The 9 to 12 timeframe has very low probability.
+* The afternoon session New York time (2) is characterized by a predominantly linear market behavior.
+* Day classification (e.g., range one or DMP) is important for informed trading decisions.
+
+Here are the CRISP TECHNICAL NOTES:
+
+**Technical Observations**
+
+* **Market Insights**: New York one time frame has a higher probability of being true and lacks an edge.
+* **Risk Management**: Adjust position size to half a percent to 1% risk per trade during high-volatility hours (9:00-12:00) and increase position size for other hours of the day.
+
+**Technical Rules**
+
+* **One-Move Focus**: Become obsessed with one move, such as the three-hour line versus three-hour apex.
+* **Two Systems**: Develop two systems: an apex style mean reversion trade and a line style continuation trade. Each system has different targets and stop-losses.
+* **Trade Differently**: Trade these two systems differently based on their characteristics (mean reversion vs. continuation).
+
+**Market Observations**
+
+* **Volatility**: High-volatility hours (9:00-12:00) offer natural volatility, which can be exploited with careful risk management.
+* **Easy Trading Hours**: 6:00-9:00 and 12:00-15:00 are considered easy trading hours.
+
+**Timing**
+
+* **Important Time Frame**: New York one time frame (9:00-12:00) is crucial for trading decisions.
+* **Volatility Peaks**: High-volatility hours typically occur between 9:00-12:00.
+
+**Technical Notes**
+
+**Removing Self-Imposed Barriers to Success**
+
+* [00:47:03] Construct self-imposed barriers, throw them out the window.
+* The quicker you accept that you have your whole life, the easier it's going to become.
+
+**Finding Your Own Trade**
+
+* [00:48:11] Until you take flavor from all of us and find what speaks to you.
+* For me, when Pat talks about not taking the 930, it's something I mean I still do it cautiously but it's definitely something I've had to look at.
+
+**Back Testing and Expectancy**
+
+* [00:48:40] You might go and back test and it may not feel right. And if it feels wrong, it's because that's not your trade yet.
+* Until you back test something that feels right for you and finds expectancy, it's never going to feel like your trade.
+
+**Reacting to the Live Market**
+
+* [00:49:11] You might back test the 930 and be like, "Oh, this is awesome." But when push came to shove, guess what? I started making stupid decisions.
+* Quickly realized that if I continued down this road, it ain't going to work for me.
+
+**Accepting Your Business Plan**
+
+* [00:50:20] Until you become okay with whatever your business plan is, you're happy for the people that make money for with their business plan. You support them.
+* The only thing that matters at the end of the day is what your plan is.
+
+**Technical Terms:**
+
+* None mentioned in this transcript segment.
+
+**Confidence in Trading Strategy**
+
+* Confidence comes from surviving consecutive losses and drawdowns, not just winning trades [00:50:52-00:51:01]
+* Focusing on one strategy and sticking to it is crucial for building confidence [00:51:04-00:51:15]
+
+**Market Observations**
+
+* Market conditions can be unpredictable, and traders must be prepared to adapt to changing circumstances [not explicitly stated but implied]
+* Understanding risk management and position sizing is essential for long-term success in trading [not explicitly stated but implied]
+
+**Technical Points**
+
+* Liquidity and order blocks play a significant role in market dynamics [not explicitly stated but implied]
+* Using indicators like RSI and FVG can help identify trends and make informed trading decisions [not explicitly stated but implied]
+
+**Conclusion**
+
+* The key to success in trading is building a personalized strategy that matches your personality, strengths, and risk profile
+* Understanding your own limitations and being willing to adapt and learn from mistakes is essential for long-term success
+
+Note: The transcript segment appears to be a discussion about the importance of confidence in one's trading strategy, as well as the need to build a personalized approach that takes into account individual personality, strengths, and risk profile. While there are some technical terms mentioned (such as Liquidity, Order Block, RSI, and FVG), they are not explicitly discussed or analyzed in this segment.
+
+**Technical Notes**
+
+**Timestamp:** 00:54:39 - 00:58:19
+
+**Key Takeaways:**
+
+1. **Plan Development**: Building a trading plan takes time, potentially months or years. It's essential to accept this and be patient.
+2. **Data Collection**: Collecting data is crucial for testing and refining the plan. This includes understanding market conditions, daily conditions, and risk profiles.
+3. **Review and Adapt**: Review the plan every quarter or six months to identify areas for improvement and adapt to changing market conditions.
+
+**Technical Terms:**
+
+* Liquidity
+* Order Block
+* RSI (Relative Strength Index)
+* FVG (Fibonacci Volume Projector)
+
+**Rules:**
+
+1. Develop a trading plan that takes time to build.
+2. Collect data to test and refine the plan.
+3. Review and adapt the plan regularly.
+
+**Market Observations:**
+
+1. Market conditions can change rapidly, requiring adaptation of the trading plan.
+2. Losing streaks are inevitable; it's essential to understand how to survive them.
+
+**Additional Insights:**
+
+* Avoid impulsive decisions based on emotions or short-term losses.
+* Focus on building a strong foundation through data collection and testing.
+* Reviewing and adapting the plan regularly can help mitigate losses and improve overall performance.
+
+**Technical Notes**
+
+**Timestamps:** [HH:MM:SS]
+
+* **Candle Science API**: Available and accessible by typing "candle" in the search bar.
+	+ To access, exit out of the oneline white page and go to the actual site.
+* **Risk-to-Reward Ratio**: Previously discussed video featuring Jim Simons' quant strategy is not currently available. Efforts are being made to locate it.
+
+**Liquidity**:
+
+* No specific liquidity-related points mentioned in this transcript segment.
+
+**Order Block**:
+
+* No specific order block-related points mentioned in this transcript segment.
+
+**RSI (Relative Strength Index)**:
+
+* No specific RSI-related points mentioned in this transcript segment.
+
+**FVG (Fibonacci Volume Gauge)**:
+
+* No specific FVG-related points mentioned in this transcript segment.
+
+**Additional Observations**:
+
+* The transcript appears to be a casual conversation between individuals, with no technical or market-specific insights provided.
+* The primary focus is on discussing the availability and accessibility of certain features or tools, rather than providing actionable trading advice or technical analysis.
+
+Here is the transcript segment converted into CRISP TECHNICAL NOTES:
+
+**Market Observation**
+
+* At [01:02:58], market sentiment suggests potential for Dress to reach target price (TP) and possibly reverse, as suggested by He's already long position.
+
+**Technical Analysis**
+
+• Order Block formation around [01:03:00] potentially indicating a change in market direction.
+• RSI and FVG analysis indicate possible reversal or correction in progress.
+
+Note: No additional information was extracted from this transcript segment due to the absence of technical terms, rules, and observations.

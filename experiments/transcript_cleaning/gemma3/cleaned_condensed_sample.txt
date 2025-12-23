@@ -1,0 +1,21 @@
+[00:00:15] 200 MAE level interacts with order block. The strategy tester utilizes valid high and valid low data collection, syncing with hourly data.
+
+[00:01:00] Target: high Maximum Favorable Excursion (MFE). The trader focuses on mechanical decision-making, aligning trade decisions with market volatility conditions.
+
+[00:01:02] Cody is a live trader, active from 10:30 to 11:30 to 12:00. Trading decisions must be synchronized with the market environment and volatility.
+
+[00:01:18] Mechanical decision-making is prioritized, with trade executions determined by predefined parameters. The trader seeks a strategy with a high hit rate, typically the 9:30 strategy.
+
+[00:01:37] Strategies require precise alignment of market conditions and volatility to maximize success, particularly with the 9:30 strategy. This strategy represents a "bare knuckle fist fight" in market conditions.
+
+[00:01:44] The five-minute chart targets 50 to 60 after a valid low, exhibiting a high hit rate.  Trade exits occur instantly upon failure to meet defined criteria.
+
+[00:02:20]  The 9:30 strategy is used when market conditions align.  The trader intends to employ this strategy at 50-60, if appropriate.
+
+[00:04:04] Initial assessment indicates a reluctance to engage in interpersonal discussion. The speaker is focused solely on technical analysis.
+
+[00:04:06] The 200 Maximum Adverse Excursion (MAE) level interacts with an order block. This represents a key area of interest for subsequent analysis.
+
+[00:04:10] The subject matter transitions to the application of technical indicators. Further details regarding the strategy will be determined.
+
+[00:04:15] A Doji candlestick pattern may indicate a period of consolidation within the current market conditions. Volatility is currently assessed as moderate.

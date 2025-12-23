@@ -1,0 +1,3 @@
+[00:00:01] Today’s analysis will focus on market structure. Specifically, an upward price movement is classified as an expansion.
+[00:00:15] Observe the Fair Value Gap (FVG) displayed. Concurrently, an order block is present at the lower level.
+[00:00:30] A breach of this high level may trigger a move toward the adjacent liquidity pool.

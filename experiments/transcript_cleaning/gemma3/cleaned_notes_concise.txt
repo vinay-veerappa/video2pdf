@@ -1,0 +1,7 @@
+* [00:00:01] Discuss market structure.
+* [00:00:15] Identify 200 MA.
+* [00:00:15] Observe interaction with order block.
+* [00:00:30] Recognize Doji candle.
+* [00:00:30] Interpret Doji as indecision.
+* [00:00:45] Simplify price logic.
+* [00:01:00] Target high MFE.

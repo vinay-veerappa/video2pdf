@@ -13,7 +13,7 @@ except ImportError:
     YOUTUBE_TRANSCRIPT_API_AVAILABLE = False
 
 
-def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False, cookies_path=None):
+def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False, cookies_path=None, output_filename=None):
     """Download transcript/subtitles from YouTube video using youtube-transcript-api (fast) or yt-dlp (fallback)"""
     print(f"\nDownloading transcript from YouTube video...")
     
@@ -28,7 +28,10 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
     elif 'youtu.be/' in url:
         video_id = url.split('youtu.be/')[1].split('?')[0].split('&')[0]
     
-    txt_path = os.path.join(transcripts_folder, "transcript.txt")
+    if not output_filename:
+        output_filename = "transcript"
+    
+    txt_path = os.path.join(transcripts_folder, f"{output_filename}.txt")
     
     # Method 1: Try youtube-transcript-api (Faster, cleaner)
     if YOUTUBE_TRANSCRIPT_API_AVAILABLE and video_id:
@@ -130,7 +133,7 @@ def download_youtube_transcript(url, output_folder, lang='en', prefer_auto=False
             print(f"Transcript downloaded: {subtitle_file}")
             
             # Also create a plain text version for easier reading (with timestamps)
-            transcript_txt_path = os.path.join(transcripts_folder, "transcript.txt")
+            transcript_txt_path = os.path.join(transcripts_folder, f"{output_filename}.txt")
             convert_vtt_to_txt(subtitle_file, transcript_txt_path, keep_timestamps=True)
             
             return subtitle_file, transcript_txt_path
@@ -447,8 +450,101 @@ def clean_transcript_text(text_or_lines):
             return ' '.join(text_or_lines)
         return str(text_or_lines)
 
+def clean_transcript_llm(input_file, output_file, model="gemma3", style="condensed"):
+    """
+    Advanced transcript cleaning using Ollama/LLM.
+    style: 'condensed' (technical notes) or 'clean' (textbook style)
+    """
+    try:
+        from scripts.ollama_utils import OllamaClient
+        client = OllamaClient()
+    except ImportError:
+        print("Error: scripts.ollama_utils or OllamaClient not found. Skipping LLM cleaning.")
+        return None
 
-def transcribe_video_local(video_path, output_folder, method='whisper', model_size='base', api_key=None):
+    try:
+        with open(input_file, 'r', encoding='utf-8') as f:
+            content = f.read()
+        
+        model = "gemma3"
+        print(f"Advanced cleaning  VxV ({style}) using {model}...")
+        
+        # Chunking for LLM context limits
+        chunk_size = 128000
+        chunks = [content[i:i+chunk_size] for i in range(0, len(content), chunk_size)]
+        
+        cleaned_content = []
+        
+        # Select prompt based on style
+        prompt_style = "CONDENSED TECHNICAL NOTES" if style == "condensed" else "CONCISE TEXTBOOK-STYLE NOTES"
+        style_rules = """1. FORMAT: Use clear paragraphs. Start each paragraph with a timestamp [HH:MM:SS].
+2. STYLE: Third-person technical documentation (condensed) or Direct professional (clean).
+3. CONTENT: PRESERVE ALL TECHNICAL DETAILS."""
+
+        for i, chunk in enumerate(chunks):
+            print(f"  Chunk {i+1}/{len(chunks)}...")
+            prompt = f"""
+Role: You are an expert Technical transcript Editor and Market Analyst who uses statistics and math to analyze market data. Your goal is Lossless Condensation of a trading transcript into a high-fidelity descriptive trascript.
+
+Objective: Rewrite the transcript while preserving every specific numerical value, "If/Then" logic chain, and statistical correlation. You must not simplify technical jargon or omit specific price levels or live price reading, as these are critical for the student's data-set entry.
+
+STRICT RULES:
+NO INFORMATION LOSS: Do not summarize or generalize. If a mentor describes a specific sequence (e.g., "rejected the 09:00 mid, breached 10 basis points, and failed the 3-hour line"), every one of those specific anchors must remain in the final text. 
+NUMERICAL FIDELITY: Retain all percentages (e.g., 73% Asia probability),  basis points, risk-to-reward ratios, and specific time-of-day references (e.g., 09:30, 13:00, 15:00).
+PRESERVE LOGIC CHAINS: Every "If/Then" statement must be preserved in full. If the mentor says, "If price breaches X, then Y becomes the target," do not shorten this to "Y is the target."
+CAPTURE Bar-by-Bar Sentiment: Retain every mention of candle behavior (e.g., "rejected hardcore," "sucked back into the range," "wiped both sides," or "footprint rejection").
+RETAIN Positional Anchors: Do not omit the specific relationship between price and key levels like the "line in the sand," the "pink flag," or "advertising vs. acceptance".
+INCLUDE Time-Price Fractals: Keep logic that ties specific time frames to price levels, such as the relationship between Monday/Tuesday as "Q1 of the weekly candle".
+MAINTAIN "Advertising vs. Acceptance" Logic: Preserve the mentor's distinction between price just "advertising" (moving past a level briefly) and "accepting" (closing or sustaining price beyond it).
+PRESERVE REFERENCS: Asia, London, NY1, N2 , C1 C2,C3, quarters, 05 boxes, 0930, instat, outofstat, VVIX
+REMOVE all filler words (um, uh, you know) and off-topic banter/jokes, unnecessary pauses and irrelevant conversations. 
+CONSOLIDATE related text into a single paragraph preferably in 5 min or longer segments. Break logically into multiple paragraphs if needed.
+CAPTURE PSYCHOLOGICAL & STRATEGIC ADVICE: Ensure all advice regarding business plans, data collection, surviving drawdowns, and "becoming obsessed with one thing" is retained with the same weight as the numerical data.
+
+STRICT TEXT REPLACEMENTS:
+"VIVIX" -> "VVIX"
+"MAE" -> "MAE"
+"MFE" -> "MFE"
+"FVG" -> "Fair Value Gap (FVG)"
+"MA" -> "MAE"
+"MF" -> "MFE"
+"Dogee" -> "Doji"
+"braker" -> "Breaker"
+"DMP" -> "DNP" (Directional No Pullbacks)
+"DWP" -> "DWP" (Directional With Pullbacks)
+"MAMF" -> "MAE MFE"
+FORMATTING: * Use timestamps [HH:MM:SS] to start paragraphs. 
+NO METALANGUAGE: Do NOT include "Here are the notes", "Glossary:", "Summary:", or introductory/concluding remarks.
+OUTPUT ONLY THE CLEANED PARAGRAPHS.
+{chunk}
+
+NOTES:
+"""
+            res = client.generate("gemma3", prompt)
+            cleaned_chunk = res.get("response", "").strip()
+            
+            # Basic model response cleaning
+            lines = cleaned_chunk.split('\n')
+            filtered_lines = [l for l in lines if not l.strip().startswith(("Here is", "Sure", "These are", "**", "Glossary"))]
+            cleaned_content.append("\n".join(filtered_lines))
+
+        final_text = "\n\n".join(cleaned_content)
+        
+        # Final cleanup/normalization
+        final_text = re.sub(r'\[(\d{2}:\d{2}:\d{2}):\d{2}\]', r'[\1]', final_text) # Fix HH:MM:SS:ms
+        
+        with open(output_file, 'w', encoding='utf-8') as f:
+            f.write(final_text)
+            
+        print(f"LLM-cleaned transcript saved to: {output_file}")
+        return output_file
+        
+    except Exception as e:
+        print(f"Error during LLM transcript cleaning: {e}")
+        return None
+
+
+def transcribe_video_local(video_path, output_folder, method='whisper', model_size='base', api_key=None, output_filename=None):
     """
     Transcribe a local video file using either OpenAI Whisper (local) or Google Gemini (cloud).
     
@@ -458,6 +554,7 @@ def transcribe_video_local(video_path, output_folder, method='whisper', model_si
         method (str): 'whisper' or 'gemini'.
         model_size (str): Whisper model size ('tiny', 'base', 'small', 'medium', 'large').
         api_key (str): Gemini API key (required if method='gemini').
+        output_filename (str): Base name for the output file (default: 'transcript').
         
     Returns:
         str: Path to the generated transcript file.
@@ -468,7 +565,10 @@ def transcribe_video_local(video_path, output_folder, method='whisper', model_si
     transcripts_folder = os.path.join(output_folder, "transcripts")
     os.makedirs(transcripts_folder, exist_ok=True)
     
-    output_path = os.path.join(transcripts_folder, "transcript.txt")
+    if not output_filename:
+        output_filename = "transcript"
+    
+    output_path = os.path.join(transcripts_folder, f"{output_filename}.txt")
     
     if os.path.exists(output_path):
         print(f"Transcript already exists at: {output_path}")

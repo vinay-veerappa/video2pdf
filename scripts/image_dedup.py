@@ -801,7 +801,7 @@ def process_image_for_dedup(args):
     """Worker function for parallel deduplication processing."""
     img_path, blur_enabled, downscale, crop_dir = args
     try:
-        img = Image.open(img_path)
+        img = Image.open(img_path).convert('RGB')
         cropped = smart_crop_video_conference(img, method='auto') # Always auto crop
         processed = cropped.copy()
         

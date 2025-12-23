@@ -43,6 +43,31 @@ def get_frames(video_path, frame_rate):
     vs.release()
 
 
+def get_keyframe_timestamps(video_path):
+    """Get exact PTS timestamps for all keyframes using ffprobe (Fast and Reliable)"""
+    try:
+        cmd = [
+            "ffprobe", "-v", "error", 
+            "-skip_frame", "nokey", 
+            "-select_streams", "v:0", 
+            "-show_entries", "frame=pts_time", 
+            "-of", "csv=p=0", 
+            video_path
+        ]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        timestamps = []
+        for line in result.stdout.splitlines():
+            line = line.strip()
+            if line:
+                try:
+                    timestamps.append(float(line))
+                except ValueError:
+                    continue
+        return timestamps
+    except Exception as e:
+        print(f"Warning: ffprobe failed to get timestamps: {e}")
+        return []
+
 def detect_unique_screenshots(video_path, output_folder_screenshot_path, 
                               frame_rate, min_percent, max_percent,
                               use_similarity=True, similarity_threshold=0.8,
@@ -56,26 +81,38 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
     """
     start_time = time.time()
     
-    # Check if images already exist in output folder
+    # Check if images already exist
     if os.path.exists(output_folder_screenshot_path):
         existing_images = glob.glob(os.path.join(output_folder_screenshot_path, "*.png"))
         if len(existing_images) > 0:
-            print(f"Images already exist in {output_folder_screenshot_path}. Skipping extraction.")
-            if progress_callback:
-                progress_callback({
-                    'status': 'finished',
-                    'percent': 100,
-                    'message': "Images already extracted."
-                })
-            return output_folder_screenshot_path
+            print(f"Images already exist. Skipping extraction.")
+            return len(existing_images)
 
-    # 1. Extract ALL frames to a temp directory using FFmpeg (Fast!)
+    # 0. Pre-scan for Master List of Timestamps (Reliable Source)
+    print("Pre-scanning video for keyframe timestamps...")
+    timestamps = get_keyframe_timestamps(video_path)
+    if timestamps:
+        print(f"Found {len(timestamps)} keyframe candidates via ffprobe.")
+
+    # 1. Extract ALL frames to a temp directory
     temp_extract_dir = os.path.join(os.path.dirname(output_folder_screenshot_path), "temp_extracted")
     if os.path.exists(temp_extract_dir):
         shutil.rmtree(temp_extract_dir)
     os.makedirs(temp_extract_dir, exist_ok=True)
     
-    print(f"Extracting frames using FFmpeg (rate: {frame_rate} fps)...")
+    # Get total duration for tertiary fallback
+    duration = 0
+    try:
+        vs = cv2.VideoCapture(video_path)
+        fps = vs.get(cv2.CAP_PROP_FPS)
+        total_frames_count = vs.get(cv2.CAP_PROP_FRAME_COUNT)
+        if fps > 0:
+            duration = total_frames_count / fps
+        vs.release()
+    except:
+        pass
+
+    print(f"Extracting I-frames using FFmpeg...")
     if progress_callback:
         progress_callback({
             'status': 'extracting',
@@ -83,94 +120,77 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
             'message': "Extracting frames from video..."
         })
     
-    timestamps = []
+    # Secondary timestamp source: showinfo parsing (in case ffprobe failed)
+    showinfo_timestamps = []
     
     try:
-        # FFmpeg command: Optimized I-Frame extraction using -skip_frame nokey
-        # We add 'showinfo' filter to get exact timestamps of extracted frames
-        
         cmd = [
             "ffmpeg",
-            "-skip_frame", "nokey", # Skip non-keyframes (must be before -i)
-            "-hwaccel", "cuda", # Explicitly use NVIDIA CUDA
+            "-skip_frame", "nokey", 
+            "-hwaccel", "auto",
             "-i", video_path,
-            "-vf", "scale='min(1920,iw)':-2,showinfo", # Resize and show info
-            "-vsync", "vfr", # Variable frame rate for I-frames
-            "-q:v", "2", # High quality JPEG/PNG
-            "-compression_level", "1", # Low compression for speed
+            "-vf", "scale='min(1920,iw)':-2,showinfo", 
+            "-vsync", "vfr", 
+            "-q:v", "2", 
             os.path.join(temp_extract_dir, "%05d.png")
         ]
         
-        # Run and capture stderr for timestamps
-        result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
-        
-        # Parse timestamps
-        # [Parsed_showinfo_0 @ ...] n:   0 pts:      0 pts_time:0       pos:      0 ...
-        regex = re.compile(r"pts_time:([0-9\.]+)")
-        for line in result.stderr.splitlines():
-            if "pts_time:" in line and "showinfo" in line:
-                match = regex.search(line)
+        process = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True, bufsize=1)
+        for line in process.stderr:
+            if "pts_time:" in line:
+                match = re.search(r"pts_time:([0-9\.]+)", line)
                 if match:
-                    timestamps.append(float(match.group(1)))
-                    
-    except subprocess.CalledProcessError:
-        print("Warning: CUDA acceleration failed. Falling back to CPU extraction.")
-        # Remove -hwaccel cuda and retry
-        cmd = [c for c in cmd if c not in ["-hwaccel", "cuda"]]
-        result = subprocess.run(cmd, check=True, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+                    showinfo_timestamps.append(float(match.group(1)))
         
-        # Parse timestamps again
-        regex = re.compile(r"pts_time:([0-9\.]+)")
-        for line in result.stderr.splitlines():
-            if "pts_time:" in line and "showinfo" in line:
-                match = regex.search(line)
-                if match:
-                    timestamps.append(float(match.group(1)))
-
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        process.wait()
+        if process.returncode != 0:
+            print(f"FFmpeg extraction code: {process.returncode}")
+            
+    except Exception as e:
         print(f"Error: FFmpeg extraction failed: {e}")
-        raise Exception("FFmpeg extraction failed. Please ensure FFmpeg is installed and working.")
 
-    # 2. Process extracted frames (Simple Rename & Move)
+    # 2. Process extracted frames
     extracted_files = sorted(glob.glob(os.path.join(temp_extract_dir, "*.png")))
-    print(f"Extracted {len(extracted_files)} frames. Moving to output folder...")
+    num_extracted = len(extracted_files)
     
-    # Verify timestamp count
-    if len(timestamps) != len(extracted_files):
-        print(f"Warning: Timestamp count ({len(timestamps)}) does not match file count ({len(extracted_files)}). Falling back to estimated timestamps.")
-        timestamps = [] # Fallback
+    if num_extracted == 0:
+        print("Error: No frames were extracted.")
+        return 0
+
+    # Finalize timestamps list using the fallback chain
+    final_timestamps = []
+    if len(timestamps) == num_extracted:
+        final_timestamps = timestamps
+        print("Using Primary (ffprobe) timestamps.")
+    elif len(showinfo_timestamps) == num_extracted:
+        final_timestamps = showinfo_timestamps
+        print("Using Secondary (showinfo) timestamps.")
+    else:
+        print(f"Warning: Master list mismatch ({len(timestamps)} vs {num_extracted}). Using distribution.")
+        if duration > 0:
+            for i in range(num_extracted):
+                final_timestamps.append((i / max(1, num_extracted - 1)) * duration)
+        else:
+            final_timestamps = [i for i in range(num_extracted)] # Last resort: seconds = index
     
-    screenshots_count = 0
-    total_frames = len(extracted_files)
-    
+    print(f"Moving {num_extracted} images to output folder...")
     for i, file_path in enumerate(extracted_files):
-        # Update progress
         if progress_callback and i % 50 == 0:
-            percent = int((i / total_frames) * 100)
+            percent = int((i / num_extracted) * 100)
             progress_callback({
                 'status': 'analyzing',
                 'percent': percent,
-                'message': f"Processing frame {i}/{total_frames}"
+                'message': f"Processing frame {i}/{num_extracted}"
             })
             
-        # Calculate timestamp
-        if timestamps:
-            frame_time = timestamps[i]
-        else:
-            # Fallback (incorrect for I-frames but better than crashing)
-            frame_time = i / frame_rate
-        
-        # Rename and move
-        # We trust image_dedup.py to do the actual deduplication later
-        filename = f"{i:03}_{round(frame_time/60, 2)}.png"
+        frame_time = final_timestamps[i]
+        filename = f"{i:03}_{round(frame_time, 2)}.png"
         dst = os.path.join(output_folder_screenshot_path, filename)
         shutil.move(file_path, dst)
-        screenshots_count += 1
             
-    # Cleanup temp extraction
-    shutil.rmtree(temp_extract_dir)
+    if os.path.exists(temp_extract_dir):
+        shutil.rmtree(temp_extract_dir)
     
     elapsed_time = time.time() - start_time
-    print(f'\n{screenshots_count} frames extracted for analysis!')
-    print(f'Time taken: {elapsed_time:.2f} seconds ({elapsed_time/60:.2f} minutes)')
-    return screenshots_count
+    print(f'\n{num_extracted} frames extracted in {elapsed_time:.2f}s!')
+    return num_extracted

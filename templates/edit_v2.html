@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edit - Grouped Interface</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --text: #1e293b;
+            --border: #e2e8f0;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            padding: 20px;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+        }
+
+        .header {
+            position: sticky;
+            top: 0;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 15px 20px;
+            border-bottom: 1px solid var(--border);
+            z-index: 100;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            backdrop-filter: blur(5px);
+            margin: -20px -20px 20px -20px;
+        }
+
+        .group-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+            overflow: hidden;
+            border: 1px solid var(--border);
+        }
+
+        .group-header {
+            padding: 12px 20px;
+            background: #f1f5f9;
+            border-bottom: 1px solid var(--border);
+            font-weight: 600;
+            color: #475569;
+            display: flex;
+            justify-content: space-between;
+        }
+
+        /* Up/Down Layout */
+        .group-content {
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Top: Image Grid */
+        .image-grid {
+            padding: 20px;
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+            border-bottom: 1px solid var(--border);
+            background: #fafafa;
+        }
+
+        .img-card {
+            position: relative;
+            border-radius: 8px;
+            overflow: hidden;
+            border: 2px solid transparent;
+            transition: all 0.2s;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+        }
+
+        .img-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+
+        .img-card img {
+            width: 100%;
+            display: block;
+            aspect-ratio: 16/9;
+            object-fit: cover;
+        }
+
+        .remove-btn {
+            position: absolute;
+            top: 5px;
+            right: 5px;
+            background: rgba(239, 68, 68, 0.9);
+            color: white;
+            border: none;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .img-card:hover .remove-btn {
+            opacity: 1;
+        }
+
+        .img-card.removed {
+            opacity: 0.3;
+            filter: grayscale(1);
+        }
+
+        .img-card.removed .remove-btn {
+            background: #64748b;
+            transform: rotate(45deg);
+            /* Turn X into + to restore */
+            opacity: 1;
+        }
+
+        /* Bottom: Text Area */
+        .text-area-container {
+            padding: 20px;
+            background: white;
+        }
+
+        textarea {
+            width: 100%;
+            min-height: 120px;
+            padding: 12px;
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            font-family: inherit;
+            font-size: 15px;
+            line-height: 1.6;
+            resize: vertical;
+            box-sizing: border-box;
+        }
+
+        textarea:focus {
+            outline: none;
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.1);
+        }
+
+        .btn {
+            padding: 8px 16px;
+            background: var(--primary);
+            color: white;
+            border: none;
+            border-radius: 6px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .btn:hover {
+            background: #1d4ed8;
+        }
+
+        .btn-secondary {
+            background: #64748b;
+        }
+
+        .btn-secondary:hover {
+            background: #475569;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="header">
+        <div>
+            <h2 style="margin: 0; font-size: 18px;">Edit Transcript (Grouped)</h2>
+            <div style="font-size: 12px; color: #64748b;">{{ transcript_name }}</div>
+        </div>
+        <div style="display: flex; gap: 10px;">
+            <!-- Add Save Logic -->
+            <button class="btn btn-secondary" onclick="openCropModal()">Set Global Crop</button>
+            <button class="btn" onclick="generateDocuments()">Generate Documents</button>
+        </div>
+    </div>
+
+    <div id="debug-log"
+        style="background:#fff3cd; color:#856404; padding:15px; border:2px solid #ffeeba; margin-bottom:20px; font-family:monospace; white-space:pre-wrap;">
+        Debug Log Initializing...
+    </div>
+
+    <div id="main-container">
+        <!-- Groups rendered here -->
+    </div>
+
+    <!-- Global Crop Modal -->
+    <div id="cropModal"
+        style="display:none; position:fixed; z-index:1000; left:0; top:0; width:100%; height:100%; background:rgba(0,0,0,0.8);">
+        <div
+            style="background:white; margin:5vh auto; padding:20px; width:90%; max-width:1000px; height:90vh; display:flex; flex-direction:column; border-radius:8px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:15px;">
+                <h3 style="margin:0;">Set Global Crop Area</h3>
+                <div>
+                    <span style="color:#666; font-size:14px; margin-right:15px;">Draw a box around the content you want
+                        to KEEP.</span>
+                    <button class="btn btn-secondary" onclick="closeCropModal()">Cancel</button>
+                    <button class="btn btn-secondary" style="background-color: #7c3aed;"
+                        onclick="saveGlobalConfig()">Save as Default</button>
+                    <button class="btn" onclick="applyGlobalCrop()">Apply to All Images</button>
+                </div>
+            </div>
+
+            <div id="crop-workspace"
+                style="flex-grow:1; position:relative; overflow:hidden; background:#333; display:flex; justify-content:center; align-items:center;">
+                <img id="crop-target" src=""
+                    style="max-width:100%; max-height:100%; display:block; box-shadow:0 0 20px rgba(0,0,0,0.5);"
+                    draggable="false">
+                <div id="crop-box"
+                    style="display:none; position:absolute; border:2px solid #2563eb; background:rgba(37, 99, 235, 0.1); pointer-events:none;">
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="data-payload" data-video-id="{{ video_id }}" data-groups='{{ groups | tojson | safe }}'
+        style="display:none;"></div>
+
+    <script>
+        let videoId, groups;
+
+        try {
+            // Read data from DOM attributes
+            const payload = document.getElementById('data-payload');
+            videoId = payload.getAttribute('data-video-id');
+            const groupsRaw = payload.getAttribute('data-groups');
+
+            if (groupsRaw) {
+                groups = JSON.parse(groupsRaw);
+            }
+        } catch (e) {
+            console.error("Critical error initializing data:", e);
+            alert("Error loading page data. Please reload.");
+        }
+
+        const container = document.getElementById('main-container');
+
+        // --- Crop Logic State ---
+        let cropStart = null;
+        let cropEnd = null;
+        let isSelecting = false;
+        let naturalScale = 1; // Ratio of displayed image to natural size
+
+        function openCropModal() {
+            // Pick the first valid image from the first group as reference
+            let refUrl = null;
+            for (let g of groups) {
+                if (g.images.length > 0) {
+                    refUrl = g.images[0].url;
+                    break;
+                }
+            }
+
+            if (!refUrl) {
+                alert("No images found to crop!");
+                return;
+            }
+
+            const img = document.getElementById('crop-target');
+            img.onload = () => {
+                // Reset state
+                document.getElementById('crop-box').style.display = 'none';
+                cropStart = null;
+                cropEnd = null;
+                // Calculate scale
+                naturalScale = img.naturalWidth / img.width;
+            }
+            img.src = refUrl;
+
+            document.getElementById('cropModal').style.display = 'block';
+
+            // Setup Mouse Events on Workspace
+            const workspace = document.getElementById('crop-workspace');
+            workspace.onmousedown = startCrop;
+            workspace.onmousemove = updateCrop;
+            workspace.onmouseup = endCrop;
+        }
+
+        function closeCropModal() {
+            document.getElementById('cropModal').style.display = 'none';
+        }
+
+        function startCrop(e) {
+            if (e.target.id !== 'crop-target' && e.target.id !== 'crop-box') return;
+            isSelecting = true;
+            const img = document.getElementById('crop-target');
+            const rect = img.getBoundingClientRect();
+
+            const x = e.clientX - rect.left;
+            const y = e.clientY - rect.top;
+
+            cropStart = { x, y };
+            cropEnd = { x, y };
+            updateBoxUI();
+        }
+
+        function updateCrop(e) {
+            if (!isSelecting) return;
+            const img = document.getElementById('crop-target');
+            const rect = img.getBoundingClientRect();
+
+            // Clamp to image bounds
+            let x = e.clientX - rect.left;
+            let y = e.clientY - rect.top;
+            x = Math.max(0, Math.min(x, rect.width));
+            y = Math.max(0, Math.min(y, rect.height));
+
+            cropEnd = { x, y };
+            updateBoxUI();
+        }
+
+        function endCrop(e) {
+            isSelecting = false;
+        }
+
+        function updateBoxUI() {
+            if (!cropStart || !cropEnd) return;
+
+            const box = document.getElementById('crop-box');
+            const img = document.getElementById('crop-target');
+            const rect = img.getBoundingClientRect();
+
+            const x = Math.min(cropStart.x, cropEnd.x) + img.offsetLeft;
+            const y = Math.min(cropStart.y, cropEnd.y) + img.offsetTop;
+            const w = Math.abs(cropEnd.x - cropStart.x);
+            const h = Math.abs(cropEnd.y - cropStart.y);
+
+            box.style.left = x + 'px';
+            box.style.top = y + 'px';
+            box.style.width = w + 'px';
+            box.style.height = h + 'px';
+            box.style.display = 'block';
+        }
+
+        function saveGlobalConfig() {
+            if (!cropStart || !cropEnd) {
+                alert("Please draw a box first to define the default crop.");
+                return;
+            }
+
+            if (!confirm("Save this as the DEFAULT crop configuration for all future videos?")) return;
+
+            const img = document.getElementById('crop-target');
+            // Calculate ratios (independent of resolution)
+            const boxX = Math.min(cropStart.x, cropEnd.x);
+            const boxY = Math.min(cropStart.y, cropEnd.y);
+            const boxW = Math.abs(cropEnd.x - cropStart.x);
+            const boxH = Math.abs(cropEnd.y - cropStart.y);
+
+            const topRatio = boxY / img.height;
+            const leftRatio = boxX / img.width;
+            const widthRatio = boxW / img.width;
+            const heightRatio = boxH / img.height;
+
+            fetch('/save_crop_config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    ratios: [leftRatio, topRatio, widthRatio, heightRatio]
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert("Configuration Saved! New videos will use this crop automatically.");
+                    } else {
+                        alert("Error: " + data.error);
+                    }
+                })
+                .catch(e => alert("Network error: " + e));
+        }
+
+        function applyGlobalCrop() {
+            if (!cropStart || !cropEnd) {
+                alert("Please draw a box first.");
+                return;
+            }
+
+            if (!confirm("Apply this crop to ALL images? This is permanent and cannot be undone.")) return;
+
+            const img = document.getElementById('crop-target');
+            // Recalculate natural scale at moment of apply (in case of window resize)
+            const scaleX = img.naturalWidth / img.width;
+            const scaleY = img.naturalHeight / img.height;
+
+            const x = Math.min(cropStart.x, cropEnd.x) * scaleX;
+            const y = Math.min(cropStart.y, cropEnd.y) * scaleY;
+            const w = Math.abs(cropEnd.x - cropStart.x) * scaleX;
+            const h = Math.abs(cropEnd.y - cropStart.y) * scaleY;
+
+            fetch('/apply_crop', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    crop_box: [x, y, w, h]
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`Success! Cropped ${data.count} images. Reloading...`);
+                        window.location.reload();
+                    } else {
+                        alert("Error: " + data.error);
+                    }
+                })
+                .catch(e => alert("Network error: " + e));
+        }
+
+        // --- End Crop Logic ---
+
+        function render() {
+            container.innerHTML = '';
+
+            groups.forEach((group, gIdx) => {
+                const groupDiv = document.createElement('div');
+                groupDiv.className = 'group-container';
+
+                // Header
+                const header = document.createElement('div');
+                header.className = 'group-header';
+                header.innerHTML = `<span>Time: ${group.time_range}</span> <span>${group.images.length} Images</span>`;
+                groupDiv.appendChild(header);
+
+                const content = document.createElement('div');
+                content.className = 'group-content';
+
+                // 1. Image Grid (Top)
+                const grid = document.createElement('div');
+                grid.className = 'image-grid';
+
+                if (group.images.length === 0) {
+                    grid.innerHTML = '<div style="color: #94a3b8; font-size: 13px; font-style: italic;">No images in this segment</div>';
+                }
+
+                group.images.forEach((img, iIdx) => {
+                    const card = document.createElement('div');
+                    card.className = `img-card ${img.removed ? 'removed' : ''}`;
+                    card.onclick = (e) => {
+                        if (e.target.tagName !== 'BUTTON') {
+                            window.open(img.url, '_blank');
+                        }
+                    };
+
+                    const btn = document.createElement('button');
+                    btn.className = 'remove-btn';
+                    btn.innerHTML = img.removed ? '+' : '&times;';
+                    btn.title = img.removed ? 'Restore' : 'Remove';
+                    btn.onclick = (e) => {
+                        e.stopPropagation();
+                        toggleImage(gIdx, iIdx);
+                    };
+
+                    const image = document.createElement('img');
+                    image.src = img.url;
+                    image.loading = "lazy";
+
+                    card.appendChild(btn);
+                    card.appendChild(image);
+                    grid.appendChild(card);
+                });
+
+                content.appendChild(grid);
+
+                // 2. Text Area (Bottom)
+                const textContainer = document.createElement('div');
+                textContainer.className = 'text-area-container';
+
+                const textarea = document.createElement('textarea');
+                textarea.value = group.text;
+                textarea.placeholder = "Transcript text for this section...";
+                textarea.onchange = (e) => {
+                    groups[gIdx].text = e.target.value;
+                };
+
+                textContainer.appendChild(textarea);
+                content.appendChild(textContainer);
+
+                groupDiv.appendChild(content);
+                container.appendChild(groupDiv);
+            });
+        }
+
+        function toggleImage(gIdx, iIdx) {
+            groups[gIdx].images[iIdx].removed = !groups[gIdx].images[iIdx].removed;
+            render();
+            // Optimization: could just update class instead of full rerender, but this is safer for prototypes
+        }
+
+        function generateDocuments() {
+            if (!confirm("Ready to generate PDF/Docx?")) return;
+
+            // We need to send the groups back.
+            // But main app only supports flat list generation currently.
+            // We can add a specialized route OR flatten it here.
+
+            // Let's create a specialized route on backend to handle "Grouped" data saving.
+
+            fetch('/save_grouped_data', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    video_id: videoId,
+                    groups: groups
+                })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Change to Open Folder
+                        if (confirm("Success! Open output folder?")) {
+                            fetch(`/open_folder/${videoId}`);
+                        }
+                    } else {
+                        alert("Error: " + data.error);
+                    }
+                })
+                .catch(e => alert("Network Error: " + e));
+        }
+
+        render();
+    </script>
+</body>
+
+</html>

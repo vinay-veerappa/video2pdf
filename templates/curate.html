@@ -241,6 +241,19 @@
             </div>
         </div>
         <div style="display: flex; align-items: center;">
+            <!-- Grouping Controls -->
+            <div
+                style="display: flex; align-items: center; gap: 10px; margin-right: 20px; padding: 8px 12px; background: #f8fafc; border-radius: 6px;">
+                <label style="font-weight: 600; color: #64748b; font-size: 13px;">Group:</label>
+                <select id="groupInterval" onchange="applyGrouping()"
+                    style="padding: 4px 8px; border: 1px solid #cbd5e1; border-radius: 4px; font-size: 13px;">
+                    <option value="0">None</option>
+                    <option value="5" selected>5min</option>
+                    <option value="10">10min</option>
+                    <option value="15">15min</option>
+                    <option value="30">30min</option>
+                </select>
+            </div>
             <div style="display: flex; align-items: center; gap: 10px; margin-right: 20px;">
                 <label for="sizeSlider" style="font-size: 12px; font-weight: 600; color: #64748b;">Size</label>
                 <input type="range" id="sizeSlider" min="150" max="600" value="240" oninput="updateGridSize(this.value)"
@@ -249,9 +262,22 @@
             <span id="count-display" style="margin-right: 15px; font-weight: 600;">0 kept</span>
             <button class="btn" style="background-color: #64748b; margin-right: 10px;"
                 onclick="openCropModal()">Crop</button>
+            <button class="btn" style="background-color: #10b981; margin-right: 10px;" onclick="saveAndRemove()">Save &
+                Remove</button>
             <button class="btn" onclick="saveAndContinue()">Save & Continue</button>
         </div>
     </div>
+
+    {% if data.already_curated_count > 0 %}
+    <div
+        style="background: #dbeafe; border: 2px solid #3b82f6; border-radius: 8px; padding: 12px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+            <strong style="color: #1e40af;">Progress:</strong>
+            <span style="color: #1e40af;">Already curated: {{ data.already_curated_count }} files</span>
+            <span style="color: #64748b; margin-left: 15px;">Remaining: {{ data.all_files|length }} files</span>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="grid" id="grid"></div>
 
@@ -362,6 +388,38 @@
 
         function closeModal() {
             document.getElementById('imgModal').style.display = "none";
+        }
+
+        function saveAndRemove() {
+            const keeps = items.filter(i => i.status === 'keep').map(i => i.name);
+            if (keeps.length === 0) {
+                alert("No slides selected to save.");
+                return;
+            }
+
+            fetch('/save_curation', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ video_id: videoId, keeps: keeps })
+            })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        // Remove saved items from the list
+                        const savedSet = new Set(keeps);
+                        for (let i = items.length - 1; i >= 0; i--) {
+                            if (savedSet.has(items[i].name)) {
+                                items.splice(i, 1);
+                            }
+                        }
+                        // Reset selection
+                        selectedIndex = items.length > 0 ? 0 : -1;
+                        render();
+                        alert(`Saved ${keeps.length} slides. ${items.length} remaining.`);
+                    } else {
+                        alert("Error saving");
+                    }
+                });
         }
 
         function saveAndContinue() {
