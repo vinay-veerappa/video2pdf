@@ -19,6 +19,26 @@
     *   Open `.env` and add your **Gemini API Key** (get one from [Google AI Studio](https://aistudio.google.com/app/apikey)).
     *   *This is required for advanced transcript cleaning features.*
 
+    *   *This is required for advanced transcript cleaning features.*
+
+4.  **Ollama (Optional - For AI Transcript Cleaning)**:
+    *   Install [Ollama](https://ollama.com/).
+    *   Pull the required model (default is `gemma3`):
+        ```bash
+        ollama pull gemma3
+        ```
+    *   Ensure Ollama is running (`ollama serve`).
+
+## Advanced Setup
+
+### YouTube Authentication (Cookies)
+If you encounter "Sign in to confirm you're not a bot" errors:
+1.  **Automatic**: Log in to YouTube in Chrome, Edge, or Firefox. The tool attempts to extract cookies automatically.
+2.  **Manual**:
+    *   Export your YouTube cookies to Netscape format (using a browser extension like "Get cookies.txt LOCALLY").
+    *   Save as `cookies.txt`.
+    *   Use the CLI: `python main.py URL --cookies cookies.txt`.
+
 ## Usage
 
 ### Web Interface (Recommended)
