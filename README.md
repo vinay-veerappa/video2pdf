@@ -11,6 +11,14 @@
     pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu121
     ```
 
+3.  **Configuration**:
+    *   Duplicate the example configuration file:
+        ```bash
+        cp .env.example .env
+        ```
+    *   Open `.env` and add your **Gemini API Key** (get one from [Google AI Studio](https://aistudio.google.com/app/apikey)).
+    *   *This is required for advanced transcript cleaning features.*
+
 ## Usage
 
 ### Web Interface (Recommended)
