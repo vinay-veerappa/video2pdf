@@ -12,6 +12,8 @@ from config import (
     MAX_SIMILARITY_COMPARISONS
 )
 from similarity import calculate_similarity, dhash, calculate_hamming_distance
+from deduplication import DuplicateDetector, ContentAnalyzer
+from PIL import Image
 
 def get_frames(video_path, frame_rate):
     """Generator function to return frames from video at specified frame rate"""
@@ -173,24 +175,101 @@ def detect_unique_screenshots(video_path, output_folder_screenshot_path,
         else:
             final_timestamps = [i for i in range(num_extracted)] # Last resort: seconds = index
     
-    print(f"Moving {num_extracted} images to output folder...")
+    print(f"Processing {num_extracted} extracted frames for duplicates...")
+    
+    kept_count = 0
+    discarded_count = 0
+    last_kept_data = None
+    
+    # Create blank/dup folders if needed
+    if save_duplicates_path:
+        os.makedirs(os.path.join(save_duplicates_path, "blanks"), exist_ok=True)
+        os.makedirs(os.path.join(save_duplicates_path, "duplicates"), exist_ok=True)
+
     for i, file_path in enumerate(extracted_files):
-        if progress_callback and i % 50 == 0:
+        if progress_callback and i % 10 == 0:
             percent = int((i / num_extracted) * 100)
             progress_callback({
                 'status': 'analyzing',
                 'percent': percent,
-                'message': f"Processing frame {i}/{num_extracted}"
+                'message': f"Analyzing frame {i}/{num_extracted}"
             })
             
         frame_time = final_timestamps[i]
-        filename = f"{i:03}_{round(frame_time, 2)}.png"
+        # Use simple seconds timestamp (no minutes conversion here to avoid confusion)
+        filename = f"{i:03}_{frame_time:.2f}.png"
         dst = os.path.join(output_folder_screenshot_path, filename)
-        shutil.move(file_path, dst)
+        
+        should_keep = True
+        reason = "unique"
+        curr_data = None
+        
+        try:
+            if not use_similarity:
+                shutil.move(file_path, dst)
+                kept_count += 1
+                continue
+
+            # Load image
+            try:
+                curr_img = Image.open(file_path).convert('RGB')
+            except Exception as e:
+                print(f"Error opening image {file_path}: {e}")
+                # Keep corrupted/unreadable files to be safe? Or discard?
+                # Better to keep and let user see it's bad.
+                shutil.move(file_path, dst)
+                kept_count += 1
+                continue
+                
+            # 1. Content Analysis (Skip Blanks)
+            metrics = ContentAnalyzer.analyze_image_content(curr_img)
+            if metrics['is_blank']:
+                should_keep = False
+                reason = "blank"
+            else:
+                # 2. Similarity Check
+                # Resize for faster hashing
+                small_img = curr_img.resize((256, 256), Image.LANCZOS)
+                curr_hashes = DuplicateDetector.compute_hashes(small_img)
+                curr_data = {'hashes': curr_hashes, 'entropy': metrics['entropy']}
+                
+                if last_kept_data:
+                    # Map similarity threshold (0.0-1.0) to distance threshold (0-64 approx)
+                    # 0.95 sim -> very close -> low distance
+                    # 0.80 sim -> somewhat close
+                    # Heuristic: Dist < (1 - sim) * 64
+                    # e.g. 0.95 -> 0.05 * 64 = 3.2 (dist <= 3)
+                    # e.g. 0.90 -> 0.10 * 64 = 6.4 (dist <= 6)
+                    
+                    dist_thresh = int((1.0 - similarity_threshold) * 60) # slightly stricter scaling
+                    dist_thresh = max(2, dist_thresh) # Minimum distance of 2
+                    
+                    res = DuplicateDetector.compare_images(last_kept_data, curr_data, threshold=dist_thresh)
+                    if res['is_duplicate']:
+                        should_keep = False
+                        reason = "duplicate"
+        
+            if should_keep:
+                shutil.move(file_path, dst)
+                kept_count += 1
+                last_kept_data = curr_data # Update last kept
+            else:
+                discarded_count += 1
+                if save_duplicates_path:
+                    target_dir = "blanks" if reason == "blank" else "duplicates"
+                    shutil.move(file_path, os.path.join(save_duplicates_path, target_dir, filename))
+                else:
+                    # If not saving duplicates, remove the temp file
+                    os.remove(file_path)
+
+        except Exception as e:
+            print(f"Error processing frame {file_path}: {e}")
+            shutil.move(file_path, dst) # Fallback keep
+            kept_count += 1
             
     if os.path.exists(temp_extract_dir):
         shutil.rmtree(temp_extract_dir)
     
     elapsed_time = time.time() - start_time
-    print(f'\n{num_extracted} frames extracted in {elapsed_time:.2f}s!')
-    return num_extracted
+    print(f'\nProcessed {num_extracted} frames: kept {kept_count}, discarded {discarded_count} ({elapsed_time:.2f}s)')
+    return kept_count

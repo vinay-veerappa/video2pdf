@@ -484,7 +484,7 @@ def clean_transcript_llm(input_file, output_file, model="gemma3", style="condens
         for i, chunk in enumerate(chunks):
             print(f"  Chunk {i+1}/{len(chunks)}...")
             prompt = f"""
-Role: You are an expert Technical transcript Editor and Market Analyst who uses statistics and math to analyze market data. Your goal is Lossless Condensation of a trading transcript into a high-fidelity descriptive trascript.
+Role: You are an expert Technical transcript Editor and Market Analyst who uses statistics and math to analyze market data. Your goal is Lossless cleaning of a trading transcript into a high-fidelity descriptive trascript by removing ONLY all filler words (um, uh, you know) and off-topic banter/jokes, unnecessary pauses and irrelevant conversations.
 
 Objective: Rewrite the transcript while preserving every specific numerical value, "If/Then" logic chain, and statistical correlation. You must not simplify technical jargon or omit specific price levels or live price reading, as these are critical for the student's data-set entry.
 
@@ -589,18 +589,86 @@ def transcribe_video_local(video_path, output_folder, method='whisper', model_si
         return None
 
 
+
+# Global caches for models
+_CACHED_WHISPER_MODEL = None
+_CACHED_FASTER_WHISPER_MODEL = None
+_CACHED_MODEL_SIZE = None
+
 def _transcribe_with_whisper(video_path, output_path, model_size):
-    """Transcribe using OpenAI Whisper locally."""
+    """Transcribe using OpenAI Whisper or Faster-Whisper locally."""
+    global _CACHED_WHISPER_MODEL, _CACHED_FASTER_WHISPER_MODEL, _CACHED_MODEL_SIZE
+    
+    # Import torch once, as it's used by both implementations for device detection
+    try:
+        import torch
+    except ImportError:
+        print("Error: 'torch' not installed. Please install PyTorch.")
+        return None
+
+    # Try using faster-whisper first (optimised for GPU)
+    try:
+        from faster_whisper import WhisperModel
+        if _CACHED_FASTER_WHISPER_MODEL and _CACHED_MODEL_SIZE == model_size:
+            print(f"Using cached Faster-Whisper model '{model_size}'...")
+            model = _CACHED_FASTER_WHISPER_MODEL
+        else:
+            print(f"Loading Faster-Whisper model '{model_size}'...")
+            
+            # Determine device and compute type
+            device = "cuda" if torch.cuda.is_available() else "cpu"
+            # Use float16 quantization on GPU for speed, else int8 on CPU
+            compute_type = "float16" if device == "cuda" else "int8"
+            
+            if device == "cuda":
+                 print(f"Using device: {device} ({torch.cuda.get_device_name(0)})")
+                 print(f"Compute Type: {compute_type} (Optimized)")
+            else:
+                 print(f"Using device: {device}")
+                 
+            model = WhisperModel(model_size, device=device, compute_type=compute_type)
+            _CACHED_FASTER_WHISPER_MODEL = model
+            _CACHED_MODEL_SIZE = model_size
+        
+        print("Transcribing audio with Faster-Whisper (this may take a while)...")
+        segments, info = model.transcribe(video_path, beam_size=5)
+        
+        print(f"Detected language: {info.language} with probability {info.language_probability:.2f}")
+        
+        formatted_lines = []
+        for segment in segments:
+            # Format: [HH:MM:SS] Text
+            start = segment.start
+            hours = int(start // 3600)
+            minutes = int((start % 3600) // 60)
+            seconds = int(start % 60)
+            timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+            formatted_lines.append(f"[{timestamp}] {segment.text.strip()}")
+            
+        with open(output_path, 'w', encoding='utf-8') as f:
+            f.write('\n'.join(formatted_lines))
+            
+        print(f"Transcription complete: {output_path}")
+        return output_path
+        
+    except ImportError:
+        pass # Fallback to standard whisper if faster-whisper is not installed
+    except Exception as e:
+        print(f"Faster-Whisper failed: {e}. Falling back to standard Whisper.")
+
+    # FALLBACK: Standard OpenAI Whisper
     try:
         import whisper
-        import torch
     except ImportError:
         print("Error: 'openai-whisper' not installed. Please run: pip install openai-whisper")
         return None
 
-    print(f"Loading Whisper model '{model_size}'...")
+    print(f"Loading Standard Whisper model '{model_size}'...")
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    print(f"Using device: {device}")
+    if device == "cuda":
+        print(f"Using device: {device} ({torch.cuda.get_device_name(0)})")
+    else:
+        print(f"Using device: {device}")
     
     model = whisper.load_model(model_size, device=device)
     
@@ -608,19 +676,18 @@ def _transcribe_with_whisper(video_path, output_path, model_size):
     # Whisper handles audio extraction from video automatically via ffmpeg
     result = model.transcribe(video_path, verbose=False)
     
-    # Format segments with timestamps
+    # Save to file
     formatted_lines = []
     for segment in result['segments']:
         start = segment['start']
         text = segment['text'].strip()
         
-        # Format timestamp HH:MM:SS
+        # Format timestamp to HH:MM:SS
         hours = int(start // 3600)
         minutes = int((start % 3600) // 60)
         seconds = int(start % 60)
         timestamp = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
         
-        formatted_lines.append(f"[{timestamp}] {text}")
         
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(formatted_lines))

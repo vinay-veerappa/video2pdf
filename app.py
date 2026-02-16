@@ -9,6 +9,7 @@ from werkzeug.utils import secure_filename
 # Import our existing logic
 from config import OUTPUT_DIR
 from utils import is_youtube_url, get_video_id
+from downloader import get_playlist_videos
 from main import main as run_pipeline_cli 
 from main import process_video_workflow
 from scripts import image_dedup
@@ -17,6 +18,7 @@ from utils import parse_image_timestamp, sanitize_filename
 import glob
 import re
 import datetime
+from job_manager import job_manager # Use the singleton instance
 
 def detect_drawn_crop_box(img):
     """
@@ -69,9 +71,8 @@ def detect_drawn_crop_box(img):
 app = Flask(__name__)
 app.config['OUTPUT_FOLDER'] = OUTPUT_DIR
 
-# Global state to track progress (simple version)
-# In production, use Redis or a database
-JOBS = {} 
+# Global state replaced by JobManager
+# See job_manager.py 
 
 @app.route('/')
 def index():
@@ -124,38 +125,109 @@ def process_video():
     auto_crop = data.get('auto_crop') == 'true'
     download_transcript = data.get('download_transcript') == 'true'
     
+    # New Flag
+    transcript_only = data.get('transcript_only') == 'true'
+    
     if not url and not existing_video_id:
         return jsonify({'error': 'No URL or Existing Video provided'}), 400
         
     # Start processing in a background thread
-    job_id = "job_" + str(len(JOBS) + 1)
-    JOBS[job_id] = {'status': 'processing', 'log': [], 'message': 'Starting...', 'percent': 0}
+    job_id = job_manager.create_job()
     
-    thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication, download_transcript, auto_crop))
+    # Check if Playlist (heuristic: contains 'list=' or 'channel'/'user'/'c')
+    # Or strict check via transcript_only flag preference
+    is_playlist = url and ('list=' in url or '/channel/' in url or '/c/' in url or '/user/' in url or '/@' in url)
+    
+    if is_playlist and transcript_only:
+        thread = threading.Thread(target=run_playlist_transcript_task, args=(job_id, url))
+    elif transcript_only and url:
+        # Single video transcript only
+        # We use run_processing_task but with specific flags to minimize other work
+        # Although run_processing_task is heavy, it handles details well. 
+        # But we need to ensure skip_extraction/skip_dedup are heavily enforced.
+        thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, False, True, True, True, False))
+    else:
+        # Standard flow
+        thread = threading.Thread(target=run_processing_task, args=(job_id, url, existing_video_id, skip_download, skip_extraction, skip_deduplication, download_transcript, auto_crop))
+        
     thread.start()
     
     return jsonify({'job_id': job_id})
 
+def run_playlist_transcript_task(job_id, playlist_url):
+    """
+    Process a YouTube playlist to download all transcripts.
+    """
+    try:
+        from transcript import download_youtube_transcript
+        
+        job_manager.update_job(job_id, {'status': 'processing', 'percent': 0, 'message': "Fetching playlist info..."})
+        
+        videos, playlist_title = get_playlist_videos(playlist_url)
+        
+        if not videos:
+            job_manager.update_job(job_id, {'status': 'error', 'error': 'No videos found in playlist.'})
+            return
+
+        playlist_safe_title = sanitize_filename(playlist_title)
+        base_output_dir = os.path.join(OUTPUT_DIR, playlist_safe_title)
+        os.makedirs(base_output_dir, exist_ok=True)
+        
+        total_videos = len(videos)
+        job_manager.update_job(job_id, {'status': 'processing', 'percent': 0, 'message': f"Found {total_videos} videos. Starting..."})
+        
+        success_count = 0
+        
+        for i, video in enumerate(videos):
+            # Check if job cancelled (simple check if we had cancellation logic, mainly for future)
+             # if job_manager.get_job(job_id).get('status') == 'cancelled': break
+                
+            percent = int((i / total_videos) * 100)
+            job_manager.update_job(job_id, {'percent': percent, 'message': f"({i+1}/{total_videos}) Processing: {video['title']}"})
+            
+            try:
+                # Make sure video title is safe
+                safe_title = sanitize_filename(video['title'])
+                
+                # We call the transcript downloader
+                # Note: download_youtube_transcript handles the actual subfolder creation
+                _, txt_path = download_youtube_transcript(
+                    video['url'], 
+                    base_output_dir, 
+                    output_filename=safe_title
+                )
+                
+                if txt_path:
+                    success_count += 1
+                    
+            except Exception as e:
+                print(f"Error processing {video['title']}: {e}")
+                job_manager.append_log(job_id, f"Error on {video['title']}: {e}")
+
+        job_manager.update_job(job_id, {
+            'status': 'completed', 
+            'percent': 100, 
+            'message': f"Done! Downloaded {success_count}/{total_videos} transcripts to {playlist_safe_title}",
+            'video_id': playlist_safe_title # Hack to pass folder name
+        })
+        
+    except Exception as e:
+        print(f"Playlist Error: {e}")
+        job_manager.update_job(job_id, {'status': 'error', 'error': str(e)})
+
 @app.route('/status/<job_id>')
 def job_status(job_id):
-    return jsonify(JOBS.get(job_id, {'status': 'unknown'}))
-
-from main import process_video_workflow
-from scripts import image_dedup
-
-from main import process_video_workflow
-from scripts import image_dedup
+    return jsonify(job_manager.get_job(job_id) or {'status': 'unknown'})
 
 def run_processing_task(job_id, url, existing_video_id=None, skip_download=False, skip_extraction=False, skip_deduplication=False, download_transcript=True, auto_crop=False):
     """
     Run the extraction and deduplication pipeline.
     """
     try:
-        JOBS[job_id]['percent'] = 0
-        JOBS[job_id]['message'] = "Starting process..."
+        job_manager.update_job(job_id, {'status': 'processing', 'percent': 0, 'message': "Starting process..."})
         
         def progress_callback(data):
-            JOBS[job_id].update(data)
+            job_manager.update_job(job_id, data)
 
         # Check for cookies.txt in root
         cookies_path = None
@@ -221,9 +293,7 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
         
         # 1.5 Auto-Crop and Reference Logic
         if auto_crop:
-            JOBS[job_id]['status'] = 'cropping'
-            JOBS[job_id]['message'] = 'Processing crop and references...'
-            JOBS[job_id]['percent'] = 60
+            job_manager.update_job(job_id, {'status': 'cropping', 'message': 'Processing crop and references...', 'percent': 60})
             
             print("Auto-cropping requested. Moving originals to raw/...")
             raw_dir = os.path.join(images_folder, "raw")
@@ -377,51 +447,31 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
                 print("No images found to crop.")
         
         
-        JOBS[job_id]['status'] = 'analyzing'
-        JOBS[job_id]['message'] = 'Starting image analysis and deduplication...'
-        JOBS[job_id]['percent'] = 75
+        job_manager.update_job(job_id, {'status': 'analyzing', 'message': 'Analying images for duplicates and blanks...', 'percent': 75})
         
         if not skip_deduplication:
-            # We use the 'compare-all' mode logic from image_dedup.py
-            # But we need to call it programmatically.
-            
-            # We can use subprocess or import. Since we are in the same env, import is better.
-            # However, image_dedup.py is designed as a script. 
-            # Let's use subprocess to be safe and consistent with CLI.
-            import subprocess
-            
             print(f"Running deduplication on {images_folder}...")
-            JOBS[job_id]['message'] = 'Analyzing images for duplicates and blanks...'
+            job_manager.update_job(job_id, {'message': 'Running advanced deduplication logic...'})
             
-            cmd = [
-                sys.executable,
-                os.path.join(os.path.dirname(__file__), "scripts", "image_dedup.py"),
-                images_folder,
-                "--mode", "compare-all",
-                "--sequential",
-                "--crop-method", "content_aware",
-                "--crop-margin", "0.20",
-                "--skip-blanks"
-            ]
-            
-            subprocess.run(cmd, check=True)
-            
-            JOBS[job_id]['message'] = 'Deduplication complete!'
-            JOBS[job_id]['percent'] = 95
+            # Using direct function call instead of subprocess
+            try:
+                success = image_dedup.run_standard_workflow(images_folder)
+                if not success:
+                    print("Deduplication workflow returned False")
+            except Exception as e:
+                print(f"Error running deduplication: {e}")
+                job_manager.append_log(job_id, f"Deduplication Error: {e}")
         else:
             # Check if we can reuse existing results
             json_path = os.path.join(images_folder, "dedup_results.json")
             if os.path.exists(json_path):
                  print(f"Skipping deduplication. Reusing existing results at {json_path}")
-                 JOBS[job_id]['message'] = 'Deduplication skipped - reusing existing results...'
-                 JOBS[job_id]['percent'] = 95
+                 job_manager.update_job(job_id, {'message': 'Deduplication skipped - reusing existing results...', 'percent': 95})
             else:
                  print("Skipping deduplication as requested. No existing results found.")
-                 JOBS[job_id]['message'] = 'Deduplication skipped - generating dummy results...'
-                 JOBS[job_id]['percent'] = 85
+                 job_manager.update_job(job_id, {'message': 'Deduplication skipped - generating dummy results...', 'percent': 85})
+                 
                  # Generate dummy dedup_results.json so curation page works
-                 # We treat all images as unique/kept for now, or just list them.
-                 # curate.html expects: { 'blanks': [], 'duplicates': [], 'all_files': [...] }
                  all_files = sorted([os.path.basename(f) for f in glob.glob(os.path.join(images_folder, "*.png"))])
                  dummy_results = {
                      'blanks': [],
@@ -431,17 +481,18 @@ def run_processing_task(job_id, url, existing_video_id=None, skip_download=False
                  with open(json_path, 'w') as f:
                      json.dump(dummy_results, f)
                  print(f"Created dummy results at {json_path}")
-                 JOBS[job_id]['percent'] = 95
+                 job_manager.update_job(job_id, {'percent': 95})
         
-        JOBS[job_id]['status'] = 'ready_for_curation'
-        JOBS[job_id]['message'] = 'Ready for curation!'
-        JOBS[job_id]['percent'] = 100
-        JOBS[job_id]['video_id'] = video_name # This is the folder name
+        job_manager.update_job(job_id, {
+            'status': 'ready_for_curation',
+            'message': 'Ready for curation!',
+            'percent': 100,
+            'video_id': video_name
+        })
         
     except Exception as e:
         print(f"Job failed: {e}")
-        JOBS[job_id]['status'] = 'error'
-        JOBS[job_id]['error'] = str(e)
+        job_manager.update_job(job_id, {'status': 'error', 'error': str(e)})
 
 @app.route('/curate/<video_id>')
 def curate(video_id):

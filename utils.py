@@ -90,39 +90,27 @@ def get_youtube_cookies():
 
 
 def parse_image_timestamp(filename, return_minutes=False):
-    """Parse timestamp from image filename. Handles both legacy (minutes) and new (seconds) formats."""
+    """
+    Parse timestamp from image filename. 
+    Expects format: index_SECONDS.png (e.g., "001_123.45.png")
+    Always treats the value as seconds.
+    """
     try:
-        # 1. Extract the numeric part after the underscore
-        # Format: index_TIME.png (e.g., "001_123.45.png")
-        match = re.search(r'_([0-9\.]+)\.png', filename)
+        # Extract the numeric part after the underscore
+        match = re.search(r'_([0-9\.]+)\.png$', filename)
         if match:
-            value = float(match.group(1))
-            
-            # Heuristic: If value > 500, it's almost certainly seconds.
-            # If value < 500, it might be minutes or seconds.
-            # But the new extractor always saves seconds.
-            # To be safe, we check if it's likely minutes (< 300 and has small decimal?)
-            # Actually, the most robust way is to assume SECONDS and let it be.
-            # However, for backward compatibility:
-            is_minutes = value < 500 # Very naive heuristic
-            
-            # If we know the video duration, we could be more accurate.
-            # For now, let's assume it's SECONDS based on our new extractor change.
-            # ONLY if we want to support old images, we'd need to know if they were minutes.
-            # Since we just changed the extractor, we'll assume SECONDS but keep it flexible.
-            total_seconds = int(value)
-            if value < 100: # Likely minutes in old format
-                 total_seconds = int(value * 60)
+            seconds_val = float(match.group(1))
             
             if return_minutes:
-                return total_seconds / 60.0
+                return seconds_val / 60.0
                 
             # Convert to HH:MM:SS format
+            total_seconds = int(seconds_val)
             hours = total_seconds // 3600
             mins = (total_seconds % 3600) // 60
             secs = total_seconds % 60
             return f"{hours:02d}:{mins:02d}:{secs:02d}"
-    except:
+    except Exception:
         pass
     return None
 

@@ -1666,18 +1666,19 @@ def get_settings_from_mode(mode):
     return modes.get(mode, modes['moderate'])
 
 
-if __name__ == "__main__":
-    args = parse_arguments()
-    
+def run_pipeline(args):
+    """
+    Main pipeline logic refactored from __main__ block.
+    """
     IMAGE_DIR = Path(args.directory)
     if not IMAGE_DIR.exists() or not IMAGE_DIR.is_dir():
-        print(f"Error: Invalid directory")
-        sys.exit(1)
+        print(f"Error: Invalid directory: {IMAGE_DIR}")
+        return False
     
-    images = get_image_files(IMAGE_DIR)
+    images = list(get_image_files(IMAGE_DIR))
     if not images:
-        print(f"No images found")
-        sys.exit(1)
+        print(f"No images found in {IMAGE_DIR}")
+        return False
     
     print(f"Found {len(images)} images in {IMAGE_DIR}\n")
     
@@ -1690,7 +1691,7 @@ if __name__ == "__main__":
     # Verify specific pair
     if args.verify:
         verify_group_all_modes(IMAGE_DIR, args.verify, args)
-        sys.exit(0)
+        return True
     
     # Detect blank images
     if args.mode == 'detect-blank' or args.detect_blank_first:
@@ -1701,10 +1702,10 @@ if __name__ == "__main__":
             report_path = IMAGE_DIR / "blank_images_report.html"
             create_blank_images_report(all_imgs, blank_images, report_path, args.content_threshold)
             print("\nDone! Check 'blank_images_report.html'")
-            sys.exit(0)
+            return True
     
     # Compare all modes
-    elif args.mode == 'compare-all':
+    if args.mode == 'compare-all':
         print(f"Found {len(images)} images in {IMAGE_DIR}")
         
         # 1. Detect Blanks First
@@ -1713,21 +1714,19 @@ if __name__ == "__main__":
             blanks = []
         else:
             print("\n=== 1. DETECTING BLANK SLIDES ===")
-            blanks, _ = find_blank_images(IMAGE_DIR) # find_blank_images returns (blank_images, all_images_data)
+            blanks, _ = find_blank_images(IMAGE_DIR)
             
-        blank_paths = {Path(b['path']) for b in blanks} # Convert to Path objects for comparison
+        blank_paths = {Path(b['path']).name for b in blanks}
         print(f"Found {len(blanks)} blank images. Excluding them from deduplication.")
         
         # 2. Filter images for deduplication
-        # We only want to compare non-blank images
-        all_image_paths = sorted(list(get_image_files(IMAGE_DIR))) # Get all image paths as Path objects
-        non_blank_files = [f for f in all_image_paths if f not in blank_paths]
+        all_image_paths = sorted(list(get_image_files(IMAGE_DIR)))
+        non_blank_files = [f for f in all_image_paths if f.name not in blank_paths]
         print(f"Proceeding with {len(non_blank_files)} images for deduplication.")
 
         # 3. Run Moderate Mode Only
         print("\n=== 2. RUNNING DEDUPLICATION (MODERATE) ===")
         
-        # Setup Moderate params
         threshold = 12
         blur = True
         downscale = False 
@@ -1739,8 +1738,8 @@ if __name__ == "__main__":
             threshold=threshold, 
             blur_enabled=blur, 
             downscale=downscale,
-            sequential=True, # Always sequential as requested
-            file_list=non_blank_files # Passing the filtered list
+            sequential=True,
+            file_list=non_blank_files
         )
         
         all_results = {'moderate': duplicates}
@@ -1771,8 +1770,32 @@ if __name__ == "__main__":
     # Single run
     else:
         run_deduplication(IMAGE_DIR, IMAGE_DIR, args.mode, args)
-        
-        # We don't need to print recommendations here as run_deduplication generates the report
-        # But we can print a summary if we want
     
     print("\nDone!")
+    return True
+
+def run_standard_workflow(image_dir):
+    """Helper for App to run standard deduplication workflow."""
+    class Args:
+        directory = str(image_dir)
+        mode = 'compare-all'
+        threshold = None
+        content_threshold = 25
+        crop_method = 'auto'
+        crop_margin = 0.20
+        blur = False
+        no_blur = False
+        downscale = False
+        no_downscale = False
+        save_crops = True
+        debug = False
+        detect_blank_first = False
+        sequential = True
+        skip_blanks = False
+        verify = None
+        
+    return run_pipeline(Args())
+
+if __name__ == "__main__":
+    args = parse_arguments()
+    run_pipeline(args)

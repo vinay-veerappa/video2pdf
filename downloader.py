@@ -184,3 +184,49 @@ def get_video_title(url):
     except Exception as e:
         print(f"Warning: Could not get video title: {e}")
         return "youtube_video"
+
+
+def get_playlist_videos(playlist_url):
+    """
+    Get all video URLs from a playlist.
+    Returns list of dicts: {'id': video_id, 'title': title, 'url': url}
+    """
+    try:
+        import json
+        cmd = [
+            sys.executable, "-m", "yt_dlp",
+            "--flat-playlist",
+            "--dump-single-json",
+            "--no-warnings",
+            playlist_url
+        ]
+        
+        print(f"Fetching playlist data for: {playlist_url}")
+        result = subprocess.run(cmd, capture_output=True, text=True, check=True)
+        data = json.loads(result.stdout)
+        
+        videos = []
+        if 'entries' in data:
+            for entry in data['entries']:
+                # Filter out private/deleted videos if title is generic?
+                # Actually yt-dlp usually handles this well.
+                if entry.get('id'):
+                    videos.append({
+                        'id': entry['id'],
+                        'title': entry.get('title', 'Unknown'),
+                        'url': f"https://www.youtube.com/watch?v={entry['id']}"
+                    })
+        else:
+            # It might be a single video, try to handle gracefully
+            if 'id' in data:
+                videos.append({
+                    'id': data['id'],
+                    'title': data.get('title', 'Unknown'),
+                    'url': f"https://www.youtube.com/watch?v={data['id']}"
+                })
+                
+        return videos, data.get('title', 'Playlist')
+        
+    except Exception as e:
+        print(f"Error fetching playlist: {e}")
+        return [], None

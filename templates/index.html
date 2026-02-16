@@ -236,6 +236,9 @@
                     <label class="checkbox-label" style="margin-left: 20px;">
                         <input type="checkbox" id="strictDedupNew"> Strict Deduplication
                     </label>
+                     <label class="checkbox-label" style="margin-left: 20px; color: #d97706; font-weight: 600;">
+                        <input type="checkbox" id="transcriptOnlyNew"> Transcript Only (Playlist Support)
+                    </label>
                 </div>
             </div>
             <div class="form-group"
@@ -398,6 +401,11 @@
                 body.append('url', url);
                 body.append('auto_crop', document.getElementById('autoCropNew').checked);
                 body.append('strict_dedup', document.getElementById('strictDedupNew').checked);
+                
+                // Check Transcript Only
+                const transcriptOnly = document.getElementById('transcriptOnlyNew').checked;
+                body.append('transcript_only', transcriptOnly);
+
                 body.append('skip_download', false);
                 body.append('skip_extraction', false);
                 body.append('download_transcript', true);
@@ -406,6 +414,7 @@
             } else {
                 const id = document.getElementById('projectSelect').value;
                 if (!id) return alert("Please select a project");
+
 
                 const project = projectsData.find(p => p.id === id);
                 let skipDownload = document.getElementById('skipDownload').checked;

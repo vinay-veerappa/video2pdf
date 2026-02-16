@@ -1,0 +1,32 @@
+{
+    "job_1771201128_0": {
+        "id": "job_1771201128_0",
+        "status": "completed",
+        "created_at": "2026-02-15T16:18:48.032216",
+        "percent": 100,
+        "message": "Done! Downloaded 0/13 transcripts to Trading Tutorials",
+        "log": [],
+        "updated_at": "2026-02-15T16:19:09.328346",
+        "video_id": "Trading Tutorials"
+    },
+    "job_1771269103_1": {
+        "id": "job_1771269103_1",
+        "status": "completed",
+        "created_at": "2026-02-16T11:11:43.347212",
+        "percent": 100,
+        "message": "Done! Downloaded 0/114 transcripts to The Currency Merchant - STKISHTHEGREAT - Videos",
+        "log": [],
+        "updated_at": "2026-02-16T11:26:39.273622",
+        "video_id": "The Currency Merchant - STKISHTHEGREAT - Videos"
+    },
+    "job_1771269434_2": {
+        "id": "job_1771269434_2",
+        "status": "ready_for_curation",
+        "created_at": "2026-02-16T11:17:14.642088",
+        "percent": 100,
+        "message": "Ready for curation!",
+        "log": [],
+        "updated_at": "2026-02-16T11:17:24.964412",
+        "video_id": "February 2026 - Lesson 2 Reversals"
+    }
+}
