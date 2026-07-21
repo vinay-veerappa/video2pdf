@@ -1413,17 +1413,32 @@ first_line_of_defense, last_line_of_defense).
   aggressive, enters at Overlapping Defense level")
 - `educator` and `framework` fields (were in v3, retained in v4)
 
-### 18g. Full production run — IN PROGRESS
+### 18g. Full production run — IN PROGRESS (parallel sessions)
 
 `knowledge_ingest/tests/run_v4_full.py` — processes all 818 inputs (7 standalone
 images + 811 rendered PDF pages from `_triage_renders/`).
 
-- Model: gemma4:31b-cloud
+**Session 1 (main):**
+- Model: `gemma4:31b-cloud`
 - Output: `C:\ICT_Videos\Testing\_v4_full_run\`
 - Resume supported (`--resume` flag)
 - Progress printed every 10 images with ETA
-- Final summary includes educator/framework/path_is_method distributions
 - ~100-175s per image → ~30-40h total ETA (first image was slowest at 175s)
+
+**Session 2 (parallel, added to cut runtime):**
+- Model: `qwen3.5:cloud`
+- Output: `C:\ICT_Videos\Testing\_v4_lumitrader\`
+- Command: `python run_v4_full.py --model qwen3.5:cloud --resume --filter lumitrader --out-dir "C:\ICT_Videos\Testing\_v4_lumitrader"`
+- Processes the lumitrader book (435 pages) — the biggest remaining chunk
+- Separate output dir avoids file conflicts with the main run
+
+**New CLI flags added for parallel support:**
+- `--out-dir DIR` — override output directory (for parallel sessions)
+- `--filter SUBSTRING` — only process images whose stem/source_pdf contains substring
+
+Both sessions write JSON results + a `_run_log.jsonl` in their respective output
+dirs. Results will be merged and deduped at the end (keeping whichever completed
+each page first, or comparing both for dual-model coverage on the lumitrader book).
 
 ### 18h. Multi-model finding (from test_multimodel_vlm.py)
 

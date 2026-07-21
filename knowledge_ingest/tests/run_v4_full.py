@@ -106,19 +106,33 @@ def main():
     ap.add_argument("--prompt", default="ict_v4")
     ap.add_argument("--resume", action="store_true", help="skip images already in output dir")
     ap.add_argument("--limit", type=int, default=None, help="cap number of images (for testing)")
+    ap.add_argument("--out-dir", default=None, help="override output directory (for parallel sessions)")
+    ap.add_argument("--filter", default=None,
+                    help="only process images whose stem/source_pdf contains this substring (for parallel sessions)")
     args = ap.parse_args()
+
+    out_dir = args.out_dir or OUTPUT_DIR
 
     prompt, prompt_label = get_prompt(args.prompt)
     print(f"prompt: {args.prompt}  ({prompt_label})")
     print(f"model:  {args.model}")
-    print(f"output: {OUTPUT_DIR}\n")
+    print(f"output: {out_dir}")
+    if args.filter:
+        print(f"filter: {args.filter}")
+    print()
 
-    os.makedirs(OUTPUT_DIR, exist_ok=True)
+    os.makedirs(out_dir, exist_ok=True)
 
     inputs = collect_inputs()
     print(f"Total inputs: {len(inputs)} "
           f"({sum(1 for i in inputs if i['source']=='standalone')} standalone + "
           f"{sum(1 for i in inputs if i['source']=='pdf_page')} PDF pages)")
+
+    if args.filter:
+        filt = args.filter.lower()
+        inputs = [i for i in inputs if filt in os.path.basename(i["path"]).lower()
+                  or (i.get("source_pdf") and filt in i["source_pdf"].lower())]
+        print(f"After filter '{args.filter}': {len(inputs)} inputs")
 
     if args.limit:
         inputs = inputs[:args.limit]
@@ -127,12 +141,12 @@ def main():
     # Resume: skip images already processed
     done = set()
     if args.resume:
-        for f in os.listdir(OUTPUT_DIR):
+        for f in os.listdir(out_dir):
             if f.endswith(".json"):
                 done.add(os.path.splitext(f)[0])
         print(f"Resume: {len(done)} images already done")
 
-    out_f = open(os.path.join(OUTPUT_DIR, "_run_log.jsonl"), "a", encoding="utf-8")
+    out_f = open(os.path.join(out_dir, "_run_log.jsonl"), "a", encoding="utf-8")
     results = []
     errors = 0
     t_start = time.time()
@@ -175,7 +189,7 @@ def main():
                 "obj": obj,
             }
 
-            with open(os.path.join(OUTPUT_DIR, f"{stem}.json"), "w", encoding="utf-8") as f:
+            with open(os.path.join(out_dir, f"{stem}.json"), "w", encoding="utf-8") as f:
                 json.dump(result, f, indent=2, default=str)
 
             out_f.write(json.dumps({"stem": stem, **{k: v for k, v in result.items()
@@ -197,7 +211,7 @@ def main():
         except Exception as e:
             print(f"  [{i}/{len(inputs)}] {stem} — ERROR {str(e)[:100]}")
             errors += 1
-            with open(os.path.join(OUTPUT_DIR, f"{stem}.json"), "w", encoding="utf-8") as f:
+            with open(os.path.join(out_dir, f"{stem}.json"), "w", encoding="utf-8") as f:
                 json.dump({"input": inp, "error": str(e)[:300]}, f, indent=2)
 
     out_f.close()
@@ -226,7 +240,7 @@ def main():
     print(f"\npath_is_method: true={pim_dist.get(True,0)}  false={pim_dist.get(False,0)}  "
           f"null={pim_dist.get(None,0)}")
 
-    print(f"\nOutput: {OUTPUT_DIR}")
+    print(f"\nOutput: {out_dir}")
 
 
 if __name__ == "__main__":
