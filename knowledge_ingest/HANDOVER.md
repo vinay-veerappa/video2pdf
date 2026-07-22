@@ -1393,6 +1393,192 @@ Each profile includes: known frameworks, terminology dialect, what their charts
 typically look like. This lets the model attribute material correctly (e.g.,
 MMXM pages → LumiTrader, not a separate "unknown" educator).
 
+---
+
+## 19. Session — ICT-aware text pipeline, schema fix, merge + MinerU integration
+
+**Date:** session following §18d. This section documents the wiring of ICT-aware
+prompts into the text pipeline, a schema correctness fix, and the merge/MinerU
+integration scaffolding.
+
+### 19a. ICT-aware text prompts — wired into the pipeline
+
+**Problem:** The generic text pipeline prompts (prompts.py) are domain-agnostic.
+They don't explain what setup/contextual/framework look like in ICT terms, don't
+reference the 176-concept vocabulary, and don't embed ICT framework context (Po3,
+MMXM, 7 Rules, sessions, macros). This likely explains the 36% below-0.6
+confidence (§10c) and the junk concepts ("analyze 8 o'clock").
+
+**Solution:** `knowledge_ingest/sources/ict_text_prompts.py` provides drop-in
+replacements that embed ICT domain knowledge into the classify and extract stages.
+Reuses `ICT_DOMAIN_KNOWLEDGE` from `ict_chart_prompts.py` (no duplication). Same
+JSON output schema — pipeline code works unchanged.
+
+**A/B tested (d14f694):** 3 Kish transcripts, generic vs ICT-aware:
+- ICT-aware finds 2.4x more units (31 vs 13)
+- Setup naming: 88% (7/8) vs 33% (1/3) — ICT-aware actually names setups
+- Better type distribution: 8 setups vs 3, captures tips/psychology
+- Concept mapping cleaner: 88% vs 118% (generic over-maps)
+- Sample names: 'Bearish Sell-Side Draw', 'CSD short', '4am buy-side raid short'
+
+**Wiring (7bc57d2, 104ff1a):**
+- `config.py`: added `ict_aware: bool = False` to PipelineConfig
+- `run.py`: added `--ict-aware` CLI flag
+- `ingest.py`: `IngestPipeline.__init__` swaps all 6 prompt references based on
+  `cfg.ict_aware`:
+  - `CLASSIFY_PROMPT` → `ICT_CLASSIFY_PROMPT`
+  - `CLASSIFY_SYSTEM` → `ICT_CLASSIFY_SYSTEM`
+  - `classify_batch_prompt()` → `ict_classify_batch_prompt()`
+  - `EXTRACT_SYSTEM` → `ICT_EXTRACT_SYSTEM`
+  - `extract_prompt()` → `ict_extract_prompt()`
+  - `extract_batch_prompt()` → `ict_extract_batch_prompt()`
+  - Falls back to generic prompts with warning if ict_text_prompts unavailable
+
+**Smoke test:** 7 units from 1 transcript (11th May 2023) — setup, 2 framework,
+contextual, 3 tips — all with ICT canonical concepts (FVG, CSD, MSS, killzone).
+
+### 19b. Schema fix — required payload fields → Optional
+
+**Problem:** Several payload classes had required (non-Optional) fields that the
+LLM extractor cannot always fill. When the model returned `null` for these fields,
+Pydantic v2 rejected the payload, the unit was silently lost, and the top-level
+`_payload_matches_knowledge_type` validator failed with a cryptic truncated error.
+
+**Affected fields:**
+| Payload | Field | Was | Now |
+|---|---|---|---|
+| `ContextualPayload` | `event_or_condition` | `str` (required) | `Optional[str] = None` |
+| `ContextualPayload` | `expected_behavior` | `str` (required) | `Optional[str] = None` |
+| `FrameworkPayload` | `method_name` | `str` (required) | `Optional[str] = None` |
+| `FrameworkPayload` | `what_it_answers` | `str` (required) | `Optional[str] = None` |
+| `FrameworkPayload` | `steps` | `List[str]` (default_factory) | `Optional[List[str]] = None` |
+| `FrameworkPayload` | `inputs_required` | `List[str]` (default_factory) | `Optional[List[str]] = None` |
+| `TipPayload` | `heuristic` | `str` (required) | `Optional[str] = None` |
+| `PsychologyPayload` | `principle` | `str` (required) | `Optional[str] = None` |
+| `SetupStep` | `order` | `int` (required) | `Optional[int] = None` |
+| `SetupStep` | `action` | `str` (required) | `Optional[str] = None` |
+
+**Design rationale:** The schema should reflect what the extractor actually
+produces. `None` means "not provided" — downstream code can distinguish it from
+`""` (empty). The `extraction_confidence` field remains the quality gate. A
+brief pipeline-level coercion band-aid (None→"") was tried first but removed —
+it masked the real issue and produced misleading data.
+
+**Pipeline error logging also improved:** payload validation failures now print
+the payload keys the model returned, and missing payloads are explicitly logged
+instead of silently swallowed.
+
+### 19c. Unified LanceDB merge — chart + text knowledge bases
+
+`knowledge_ingest/merge_knowledge_base.py` combines chart-derived units (818 from
+v4) and transcript-derived units into a single LanceDB vector store.
+
+**Current knowledge bases:**
+- Chart: `C:\ICT_Videos\Testing\_v4_lancedb` (818 rows, table "knowledge")
+- Text: will be built from ingest output dirs after transcript re-ingestion completes
+
+**Usage:**
+```
+python -m knowledge_ingest.merge_knowledge_base --transcript-dir <text_units_dir>
+```
+
+**TCM transcript sources (335 total):**
+- `C:\ICT_Videos\TCM\2023\transcripts` — 242 .txt files (raw timestamped)
+- `C:\ICT_Videos\TCM\2024\transcripts` — 75 .txt files
+- `C:\ICT_Videos\TCM\2025\transcripts` — 18 .txt files
+- Note: `C:\ICT_Videos\TCM\AllTranscripts` has 268 .md files but those are
+  summarized/processed versions — NOT the raw verbatim transcripts with timestamps
+  that the pipeline expects. The `transcripts_zip/` in the workspace was a partial
+  142-file subset of 2023 only.
+
+### 19d. MinerU integration — PDF → image/text routing
+
+`knowledge_ingest/mineru_integration.py` provides a clean interface to:
+1. Run MinerU on a PDF → get markdown + extracted images
+2. Route images to v4 chart extraction pipeline
+3. Route markdown to ICT-aware text ingestion pipeline
+
+**MinerU venv:** `C:\Users\vinay\mineru_venv` (separate Python environment)
+**Usage:**
+```
+python -m knowledge_ingest.mineru_integration --check
+python -m knowledge_ingest.mineru_integration --pdf <path>
+python -m knowledge_ingest.mineru_integration --pdf-dir <dir> --batch
+```
+
+### 19e. How to run the full TCM transcript re-ingestion
+
+Three parallel PowerShell windows (one per year, each writes to separate output
+dirs — no collisions since each transcript produces its own `{stem}.jsonl`):
+
+```powershell
+# Window 1 — 2023 (242 transcripts)
+cd C:\Users\vinay\video2pdf
+.\.venv\Scripts\Activate.ps1
+$env:PYTHONPATH = "."
+python -m knowledge_ingest.run --input "C:\ICT_Videos\TCM\2023\transcripts" --output "C:\ICT_Videos\Testing\_text_ict_2023" --source-type transcript --ict-aware --no-skip
+
+# Window 2 — 2024 (75 transcripts)
+python -m knowledge_ingest.run --input "C:\ICT_Videos\TCM\2024\transcripts" --output "C:\ICT_Videos\Testing\_text_ict_2024" --source-type transcript --ict-aware --no-skip
+
+# Window 3 — 2025 (18 transcripts)
+python -m knowledge_ingest.run --input "C:\ICT_Videos\TCM\2025\transcripts" --output "C:\ICT_Videos\Testing\_text_ict_2025" --source-type transcript --ict-aware --no-skip
+```
+
+After all 3 complete, merge into unified LanceDB:
+```powershell
+python -m knowledge_ingest.merge_knowledge_base --transcript-dir "C:\ICT_Videos\Testing\_text_ict_2023\units"
+```
+
+### 19f. Testing the knowledge base
+
+**Existing chart LanceDB:** 818 rows at `C:\ICT_Videos\Testing\_v4_lancedb`
+(table "knowledge"). Semantic search verified with 5 test queries — all relevant.
+
+**Search API:** `knowledge_ingest.pipeline.vector_store.search()` provides
+metadata-filtered semantic search:
+- Filter by `knowledge_type` (setup, framework, contextual, tip, psychology)
+- Filter by `session` (ny_am, london, etc.)
+- Filter by `testability` (backtestable, partially, not_testable)
+- Filter by `min_confidence`
+
+**As ingest progresses**, build intermediate LanceDB from partial output and
+test retrieval quality against known ICT concepts.
+
+### 19g. Module layout additions (since §3)
+
+```
+knowledge_ingest/
+  run.py                    + --ict-aware flag
+  config/config.py          + ict_aware: bool field
+  pipeline/
+    ingest.py               + ICT-aware prompt swapping, better error logging
+  schema/
+    models.py               + required fields → Optional (§19b)
+  sources/
+    ict_text_prompts.py     NEW: ICT-aware text pipeline prompts (drop-in)
+    ict_chart_prompts.py    ICT-aware chart prompts (§18c)
+  merge_knowledge_base.py   NEW: unified LanceDB builder (chart + text)
+  mineru_integration.py      NEW: MinerU PDF → image/text routing
+  tests/
+    test_text_prompts_ab.py A/B test: generic vs ICT-aware prompts
+    convert_v4_to_units.py v4 JSON → KnowledgeUnit JSONL converter
+    run_v4_full.py          v4 full production run script
+    _test_vector_search.py  LanceDB semantic search verification
+```
+
+### 19h. Git commits this session
+
+- `515c0bf`: v4 ICT-aware chart extraction prompt (classification-free, 7/7)
+- `2c25757`: HANDOVER §18 docs
+- `7669532`: --out-dir/--filter flags for parallel sessions
+- `c92a73a`: Production run complete — quality analysis, Grok comparison
+- `13e1c5f`: v4→KnowledgeUnit converter + LanceDB vector store
+- `45aef80`: ICT-aware text pipeline prompts
+- `d14f694`: A/B test: ICT-aware vs generic text prompts
+- `7bc57d2`: Wire ICT-aware prompts into pipeline + merge/mineru integration
+- `104ff1a`: Schema Optional fix + push to GitHub
+
 ### 18e. Arjo terminology corrected
 
 The model was producing wrong expansions (OD="Origin of Delivery", FLOD="First

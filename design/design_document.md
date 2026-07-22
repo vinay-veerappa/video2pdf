@@ -54,6 +54,9 @@ graph TD
 - **`generate_notes.py`**: A standalone script (currently) that correlates slides with transcript segments and uses the Gemini API to generate structured notes. [Detailed Design](design_notes_gen.md)
 - **`convert_md_to_docx.py`**: Converts the Markdown output from `generate_notes.py` into a formatted DOCX file. [Detailed Design](design_notes_gen.md)
 
+### 3.3. Knowledge Ingestion System (`knowledge_ingest/`)
+- **`knowledge_ingest/`**: A separate subsystem that transforms ICT trading-education sources (transcripts, PDFs, chart images) into a typed, searchable knowledge base via LanceDB. Uses Ollama LLM models for segment→classify→extract pipeline with ICT-aware prompts. See §7 and `knowledge_ingest/HANDOVER.md` for full documentation.
+
 ### 3.3. Scripts
 - **`scripts/image_dedup.py`**: Advanced image deduplication and blank detection logic. Uses perceptual hashing (phash, dhash), histogram comparison, and OCR. This is the primary engine for the **Interactive Curation** mode. [Detailed Design](design_analyzer.md)
 
@@ -103,3 +106,111 @@ output/
 - [ ] Improve configuration management (currently hardcoded API keys and paths in some scripts).
 - [ ] Unified error handling and logging across all modules.
 - [ ] Database integration for better job tracking (replacing in-memory `JOBS` dict).
+
+---
+
+## 7. Knowledge Ingestion System (`knowledge_ingest/`)
+
+### 7.1. Overview
+
+The `knowledge_ingest/` package is a separate subsystem that transforms heterogeneous
+ICT trading-education sources (video transcripts, markdown, PDFs, chart/diagram
+images) into a typed, filterable, provenance-tracked knowledge base. It is designed
+to feed a trading companion (setup retrieval, backtest validation, live analysis).
+
+### 7.2. Architecture
+
+```
+SOURCES                     FRONT STAGE                    CORE PIPELINE
+transcripts/.txt/.md  ──────────────────────────┐
+text PDFs         ──► pdf_extract ───────────────┤
+mixed PDFs/Slides ──► pdf_extract --mixed ──┬────┤──► segment → classify → extract
+blogs             ──► blog_fetch ───────────┤    │   (typed KnowledgeUnit JSONL)
+                                            │    │            │
+chart/diagram images ───────────────────────┴────┼──► chart_extract (VLM propose
+  (also from mixed-PDF/blog image pages)          │      → human verify → commit)
+                                                  │            │
+                                                  ▼            ▼
+                                            units/*.jsonl (one store)
+                                                  │
+                            report_unmapped → grow vocab → recanonicalize
+                                                  │
+                                            build_lancedb → queryable vector store
+```
+
+### 7.3. Key Components
+
+| Module | Purpose |
+|---|---|
+| `run.py` | Entry point: ingest, --build-vectors, --ict-aware flag |
+| `config/config.py` | All tunables: models, paths, batch sizes, thresholds, ict_aware |
+| `schema/models.py` | Pydantic v2 schemas: KnowledgeUnit, 6 payload types, provenance |
+| `pipeline/ingest.py` | Orchestrator: segment→classify→extract, batched, resume, ICT-aware swapping |
+| `pipeline/prompts.py` | Domain-agnostic prompt templates |
+| `pipeline/ollama_client.py` | Ollama HTTP client, retry, robust JSON parse |
+| `pipeline/vector_store.py` | LanceDB build + metadata-filtered semantic search |
+| `sources/ict_text_prompts.py` | ICT-aware text pipeline prompts (drop-in replacements) |
+| `sources/ict_chart_prompts.py` | ICT-aware chart extraction prompts (v4, classification-free) |
+| `sources/pdf_extract.py` | Text PDFs + --mixed per-page router |
+| `sources/blog_fetch.py` | Fetch → clean text + download images |
+| `sources/chart_extract.py` | VLM chart → verify → unit |
+| `vocab/ict_vocabulary.py` | 176 canonical ICT concepts + aliases |
+| `merge_knowledge_base.py` | Unified LanceDB builder (chart + text units) |
+| `mineru_integration.py` | MinerU PDF → image/text routing |
+
+### 7.4. Knowledge Types
+
+Every extracted unit is one of 6 typed categories, each with its own schema:
+
+| Type | Description | Example |
+|---|---|---|
+| `setup` | Mechanical trade setup with entry/exit rules | "9:12 CSD short" |
+| `contextual` | Calendar/regime anticipation | "Options expiry week sell-off" |
+| `framework` | Analytical method / how-to | "Power of Three (Po3)" |
+| `tip` | Heuristic / practical advice | "Move to BE if no expansion in 2 mins" |
+| `psychology` | Trading mindset / discipline | "Dial back expectations after objective met" |
+| `anecdote` | War story with embedded lesson | "Don't chase the entry" |
+
+### 7.5. ICT-Aware Pipeline
+
+The `--ict-aware` flag enables ICT domain-knowledge-embedded prompts that:
+- Embed ICT framework context (Po3, MMXM, 7 Rules, sessions, macros)
+- Reference the 176-concept canonical vocabulary
+- Explain what each field means in ICT methodology
+- A/B tested: 2.4x more units, 88% setup naming vs 33%, cleaner concept mapping
+
+### 7.6. Vector Store
+
+LanceDB with `nomic-embed-text` embeddings. Supports metadata-filtered semantic
+search (by knowledge_type, session, testability, min_confidence).
+
+### 7.7. Design Decisions
+
+- **Typed knowledge, not prose blobs** — each unit has a schema, only `setup` and
+  testable `contextual` flow toward backtest validation
+- **Grounding discipline** — extraction fills only what's stated; inferences go in
+  `inferred_fields`; per-unit `extraction_confidence`
+- **Canonical vocabulary** — 176 ICT concepts with alias mapping; grow vocab anytime,
+  re-canonicalize (cheap, idempotent), never re-extract (expensive)
+- **Capture once** — provenance on every unit; idempotent recanonicalize
+- **Charts: human-in-the-loop** — VLM proposes, human verifies
+- **Schema reflects reality** — payload fields are Optional; `None` means "not
+  provided"; `extraction_confidence` is the quality gate
+
+### 7.8. Running the Knowledge Ingestion
+
+```bash
+# Text transcripts (ICT-aware)
+python -m knowledge_ingest.run --input <transcripts> --output <out> --source-type transcript --ict-aware --no-skip
+
+# Build vector store from existing units
+python -m knowledge_ingest.run --build-vectors --units <dir1> <dir2> --db knowledge.lancedb
+
+# Merge chart + text into unified LanceDB
+python -m knowledge_ingest.merge_knowledge_base --transcript-dir <text_units_dir>
+
+# MinerU PDF extraction
+python -m knowledge_ingest.mineru_integration --pdf <path>
+```
+
+See `knowledge_ingest/HANDOVER.md` for the complete system documentation.
