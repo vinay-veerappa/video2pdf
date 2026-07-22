@@ -278,30 +278,30 @@ pip install trafilatura beautifulsoup4                  # blog fetch
 > - MinerU is the right OCR tool (§17f confirmed) — glm-ocr failed on all test pages
 
 
-## 14-17. Vocabulary harmonization, code hardening, image/PDF plan (HISTORICAL � condensed)
+## 14-17. Vocabulary harmonization, code hardening, image/PDF plan (HISTORICAL � condensed)
 
 > These sections document the reasoning trail from the initial text pipeline through
-> vocabulary harmonization, code hardening, and the image/PDF bake-off that led to �18.
+> vocabulary harmonization, code hardening, and the image/PDF bake-off that led to �18.
 > Full content is in git history. Key outcomes:
 
-**�14-15: Vocabulary** � 56 ? 82 ? 172 ? 176 canonical concepts across 3 harmonization 
+**�14-15: Vocabulary** � 56 ? 82 ? 172 ? 176 canonical concepts across 3 harmonization 
 rounds against the full 261-file / 8724-raw-concept corpus. Unmapped rate: 79% ? 37%.
 Key insight: matching against short LLM-extracted concept phrases is safe for bare 
 acronyms (not the same as matching against free prose text). Kish's 7 Rules fully 
-modeled. Two bugs fixed: concepts_raw junk emission (�15b), ChartTextContent 
-forward-reference ordering (�15c).
+modeled. Two bugs fixed: concepts_raw junk emission (�15b), ChartTextContent 
+forward-reference ordering (�15c).
 
-**�16: Code hardening** � 6 bugs fixed, 8 regression tests added (all pass).
+**�16: Code hardening** � 6 bugs fixed, 8 regression tests added (all pass).
 Recanonicalize verified safe across full corpus: 11,592 units, 4,483 gained canonical 
 ids, 0 regressions. Key fix: map_to_canonical now collects ALL matches per raw 
 concept (was breaking after first match).
 
-**�17: Image/PDF plan** � Phase 0 (triage): 600 pages triaged, 91% full-page images.
+**�17: Image/PDF plan** � Phase 0 (triage): 600 pages triaged, 91% full-page images.
 Phase 1 (VLM bake-off): 55/63 results analyzed, founding premise partially holds 
 (71%). MinerU confirmed as OCR tool (glm-ocr failed on all no-text-layer pages). 
 MinerU smoke test passed on Flux and MMXM PDFs. GPU acceleration enabled (RTX 4060).
-All of this was superseded by �18's classification-free single-model approach and 
-�19d's MinerU integration module.
+All of this was superseded by �18's classification-free single-model approach and 
+�19d's MinerU integration module.
 
 ## 18. Session — ICT-aware v4 prompt: classification-free, 7/7 accuracy, full production run
 
@@ -777,3 +777,175 @@ search() → semantic retrieval with metadata filters
    frequency, reduce "unknown" educator rate.
 4. **Merge chart + text knowledge bases** — combine the 818 chart-derived units
    with the ~300 transcript-derived units into a unified LanceDB.
+
+---
+
+## 20. Knowledge base query + RAG layer (2026-07-21)
+
+This section documents the three interfaces that connect the knowledge base to any
+LLM or client: CLI query, HTTP API server, and Python library. The practical payoff
+of the entire pipeline — you ask a question, get a grounded answer with citations.
+
+### 20a. Architecture
+
+```
+┌──────────────────────────────────────────────────────────────┐
+│  ANY LLM or CLIENT                                            │
+│  (Copilot Chat, Open WebUI, Python script, curl, trading bot) │
+└──────────┬──────────────────────────────┬────────────────────┘
+           │                              │
+   ┌───────▼────────┐          ┌──────────▼──────────┐
+   │ CLI (ask_kb.py) │          │ API (serve.py)      │
+   │                 │          │ http://localhost:8900│
+   │ ask "question" │          │                     │
+   │ --no-llm        │          │ POST /ask  → RAG     │
+   │ --sources       │          │ POST /search → raw   │
+   │ interactive REPL│          │ GET /stats           │
+   └───────┬────────┘          └──────────┬──────────┘
+           │                              │
+           └──────────┬───────────────────┘
+                      │
+          ┌───────────▼──────────────┐
+          │  LanceDB (818+ units)     │
+          │  + Ollama LLM (RAG)       │
+          └──────────────────────────┘
+```
+
+### 20b. Three interfaces
+
+**1. CLI — direct question with LLM synthesis:**
+```powershell
+$env:PYTHONPATH = "."
+python -m knowledge_ingest.tests.ask_kb "What is the Sharp Turn entry model?"
+python -m knowledge_ingest.tests.ask_kb "How does Kish use CSD?" --sources --k 5
+python -m knowledge_ingest.tests.ask_kb "What are the 7 Rules?" --no-llm
+python -m knowledge_ingest.tests.ask_kb  # interactive REPL
+```
+
+**2. HTTP API server — any client can query:**
+```powershell
+# Start server:
+$env:PYTHONPATH = "."
+python -m knowledge_ingest.serve --port 8900
+
+# Query from any client:
+$body = @{question="What is CSD?"; k=8} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://127.0.0.1:8900/ask" -Method POST -Body $body -ContentType "application/json"
+
+# Raw search (no LLM):
+$body = @{query="Judas swing"; k=5} | ConvertTo-Json
+Invoke-RestMethod -Uri "http://127.0.0.1:8900/search" -Method POST -Body $body -ContentType "application/json"
+
+# Stats:
+Invoke-RestMethod -Uri "http://127.0.0.1:8900/stats"
+```
+
+**3. Python library — for scripts and agents:**
+```python
+from knowledge_ingest.tests.ask_kb import retrieve, format_context, synthesize
+from knowledge_ingest.pipeline.vector_store import search
+
+# Raw search (no LLM):
+results = search("CSD order flow", db_path=r"C:\ICT_Videos\Testing\_v4_lancedb", k=8)
+
+# Full RAG:
+results = retrieve("What is CSD?", k=8)
+context = format_context(results)
+answer = synthesize("What is CSD?", context, model="deepseek-v4-flash:cloud")
+```
+
+### 20c. RAG pipeline — how it works
+
+1. **Retrieve:** Question → embedded (nomic-embed-text) → semantic search against
+   LanceDB → top-K units with metadata (knowledge_type, confidence, source, speaker)
+2. **Format:** Retrieved units formatted as numbered source blocks with concepts,
+   payload content, and provenance (who said it, where, when)
+3. **Synthesize:** Question + formatted sources → sent to LLM (deepseek-v4-flash:cloud)
+   with system prompt: "Answer using ONLY the provided source material. Cite sources
+   by number. If sources don't contain enough info, say so."
+4. **Answer:** LLM returns grounded answer with [Source N] citations. Every claim
+   traces to a specific knowledge unit.
+
+### 20d. API endpoints
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| GET | `/health` | Health check (status + DB path) |
+| GET | `/stats` | Database statistics (counts, type distribution, top sources) |
+| POST | `/search` | Raw semantic search — returns units, no LLM |
+| POST | `/ask` | Full RAG — retrieve + LLM synthesize, returns answer + sources |
+
+**POST /search body:**
+```json
+{"query": "CSD order flow", "k": 8, "knowledge_type": "setup", "min_confidence": 0.5}
+```
+
+**POST /ask body:**
+```json
+{"question": "What is CSD?", "k": 8, "knowledge_type": null, "min_confidence": 0.5}
+```
+
+**POST /ask response:**
+```json
+{
+  "answer": "Based on the provided source material, CSD stands for...",
+  "question": "What is CSD?",
+  "sources": [{"knowledge_type": "setup", "source_file": "Vinay_Models.pdf", ...}]
+}
+```
+
+### 20e. Query tool — interactive stats and search
+
+`knowledge_ingest/tests/query_kb.py` provides a standalone query tool:
+
+```powershell
+python -m knowledge_ingest.tests.query_kb --stats
+python -m knowledge_ingest.tests.query_kb --search "Judas swing" --type setup -k 5
+python -m knowledge_ingest.tests.query_kb --text-stats
+python -m knowledge_ingest.tests.query_kb  # interactive REPL
+```
+
+### 20f. Current knowledge base state
+
+**Chart units (LanceDB, ready):** 818 units at `C:\ICT_Videos\Testing\_v4_lancedb`
+- 415 framework, 403 setup
+- Sources: LumiTrader book (435), Vinay_Models (119), ICTNotes (78), Flux (67), etc.
+- All 0.5-0.9 confidence, avg 5.1 concepts per unit
+
+**Text units (growing):** 62 units from 9 transcripts at `C:\ICT_Videos\Testing\_text_ict_ingest\units`
+- 15 setup, 13 tip, 12 framework, 11 contextual, 10 psychology, 1 anecdote
+- Avg confidence 0.79, only 3% below 0.6 (vs 36% with generic prompts)
+- All from Kish transcripts; will grow to ~335 transcripts
+
+### 20g. Module layout additions
+
+```
+knowledge_ingest/
+  serve.py                      NEW: HTTP API server (health, stats, search, ask)
+  tests/
+    ask_kb.py                   NEW: RAG CLI + interactive REPL
+    query_kb.py                  NEW: query tool (stats, search, text-stats, REPL)
+```
+
+### 20h. Practical value — what this replaces
+
+| Before (manual) | After (knowledge base) |
+|---|---|
+| Re-watch 335 videos to find "that thing about the 9:12 macro" | `ask_kb "What is the 9:12 macro?"` |
+| Re-explain ICT concepts from memory | LLM answers from KB with citations |
+| Manually cross-reference educators' methods | `search "CSD"` across all sources at once |
+| No way to verify "did Kish say X?" | Search with speaker filter, see exact transcript + timestamp |
+| Can't programmatically access trading knowledge | HTTP API → any tool, bot, or dashboard can query |
+
+### 20i. Connecting to other LLMs
+
+The HTTP API (`serve.py`) makes the knowledge base accessible to:
+- **Copilot Chat** — via MCP server or HTTP tool calls
+- **Open WebUI** — configure as a custom tool/function
+- **Custom agents** — any Python script calls `retrieve()` + `synthesize()`
+- **Trading bots** — query setup definitions, framework rules, or session timing
+- **Dashboards** — fetch stats and display knowledge coverage
+
+The LLM model used for synthesis is configurable (`--model` flag on serve.py, or
+`model` parameter in the Python API). Currently `deepseek-v4-flash:cloud` — fast,
+grounded, no hallucination. Can be swapped to any Ollama model.

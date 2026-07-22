@@ -213,4 +213,38 @@ python -m knowledge_ingest.merge_knowledge_base --transcript-dir <text_units_dir
 python -m knowledge_ingest.mineru_integration --pdf <path>
 ```
 
-See `knowledge_ingest/HANDOVER.md` for the complete system documentation.
+### 7.9. Querying the Knowledge Base (RAG)
+
+The knowledge base exposes three interfaces for any LLM or client to query:
+
+**CLI — ask a question with grounded answer:**
+```bash
+python -m knowledge_ingest.tests.ask_kb "What is the Sharp Turn entry model?"
+python -m knowledge_ingest.tests.ask_kb "How does CSD work?" --sources
+python -m knowledge_ingest.tests.ask_kb  # interactive REPL
+```
+
+**HTTP API server — any client can query:**
+```bash
+# Start server
+python -m knowledge_ingest.serve --port 8900
+
+# POST /ask    — RAG: retrieve + LLM synthesize
+# POST /search — raw semantic search (no LLM)
+# GET  /stats  — database statistics
+# GET  /health — health check
+```
+
+**Python library — for scripts and agents:**
+```python
+from knowledge_ingest.tests.ask_kb import retrieve, format_context, synthesize
+results = retrieve("What is CSD?", k=8)
+answer = synthesize("What is CSD?", format_context(results))
+```
+
+The RAG pipeline: question → semantic search (LanceDB) → top-K units retrieved →
+formatted as context → LLM synthesizes grounded answer with [Source N] citations.
+Every claim traces to a specific knowledge unit with provenance (speaker, source,
+confidence). The LLM model is configurable (default: deepseek-v4-flash:cloud).
+
+See `knowledge_ingest/HANDOVER.md` §20 for full documentation.
