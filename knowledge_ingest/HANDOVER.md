@@ -1563,16 +1563,48 @@ Before v4's breakthrough, we tested multiple VLMs on the focused problem set:
 4. **No trade metrics (R:R, SL, target)** — v4 doesn't capture numeric trade
    parameters. Could add to prompt v5 if needed.
 
-### 18l. Next steps
+### 18l. Downstream pipeline — COMPLETE (2026-07-21)
 
-1. **Build downstream pipeline** — v4 output → typed KnowledgeUnit → vocab mapping
-   → vector store. The chart path is now production-ready.
-2. **Educator name normalization** — post-process to canonical names.
-3. **Merge parallel results** — compare gemma4 vs qwen3.5 on 435 lumitrader pages
-   for dual-model quality assessment. May reveal model-specific biases.
-4. **Text pipeline prompt rewrite (§17i)** — apply ICT-aware approach to
+**v4 → KnowledgeUnit converter** (`knowledge_ingest/tests/convert_v4_to_units.py`):
+- 818/818 images converted to typed `KnowledgeUnit` JSONL, 0 errors
+- `path_is_method=True` → `KnowledgeType.SETUP` (with sequence, entry_mechanics, reference_levels)
+- `path_is_method=False` → `KnowledgeType.FRAMEWORK` (reference/text pages)
+- Educator names normalized via lookup table
+- Concepts mapped via `ict_vocabulary.map_to_canonical()`
+- All 818 units validated against `KnowledgeUnit` Pydantic schema
+- Output: `C:\ICT_Videos\Testing\_v4_units\v4_chart_units.jsonl`
+
+**LanceDB vector store** (`C:\ICT_Videos\Testing\_v4_lancedb`):
+- 818 rows embedded with `nomic-embed-text`
+- Metadata columns for pre-filtering: `knowledge_type`, `concepts`, `confidence`, `source_file`, etc.
+- Semantic search verified with 5 test queries — all returned relevant results
+- Search API: `from knowledge_ingest.pipeline.vector_store import search; search(query, db_path=..., k=N)`
+
+**Dual-model comparison** (`knowledge_ingest/tests/_compare_models.py`):
+- Educator agreement: 99.5% (433/435)
+- `path_is_method` agreement: 64.4% (gemma4 more liberal, qwen3.5 more conservative)
+- Framework agreement: 45.3% (qwen3.5 tends to use "other" or "None" where gemma4 assigns specific framework)
+
+**End-to-end pipeline now works:**
+```
+PDFs/Images → triage_pdf.py → _triage_renders/ (811 PNGs)
+                ↓
+run_v4_full.py (gemma4:31b-cloud) → _v4_full_run/ (818 JSONs)
+                ↓
+convert_v4_to_units.py → _v4_units/ (818 KnowledgeUnits)
+                ↓
+build_lancedb() → _v4_lancedb/ (vector store, 818 rows)
+                ↓
+search() → semantic retrieval with metadata filters
+```
+
+### 18m. Next steps
+
+1. **Text pipeline prompt rewrite (§17i)** — apply ICT-aware approach to
    `prompts.py` for transcripts. Re-classify + re-extract low-confidence subset.
-5. **MinerU integration (Phase 5, §17f)** — MinerU for page routing + OCR;
+2. **MinerU integration (Phase 5, §17f)** — MinerU for page routing + OCR;
    v4 prompt for interpretation. Full image/PDF pipeline.
-6. **Prompt v5 (optional)** — add trade metrics capture, improve entry_mechanics
+3. **Prompt v5 (optional)** — add trade metrics capture, improve entry_mechanics
    frequency, reduce "unknown" educator rate.
+4. **Merge chart + text knowledge bases** — combine the 818 chart-derived units
+   with the ~300 transcript-derived units into a unified LanceDB.
