@@ -1007,3 +1007,160 @@ in the tvdownloadOHLC repo.
 - `5bfd781`: Clean up HANDOVER (1724→779 lines, removed superseded content)
 - `f8821e9`: HANDOVER §20 (RAG/query/API) + serve.py + ask_kb.py + query_kb.py
 - `32713c3`: KB bridge (kb_bridge.py — connects to tvdownloadOHLC narrative)
+---
+
+## 21. OPEX validation: vector DB vs NotebookLM (2026-07-21)
+
+Validated that the local LanceDB vector store produces the same OPEX answers
+as NotebookLM's synthesis, with **better provenance** at the cost of **less narrative**.
+
+### 21a. The test
+
+Asked both systems the same question: "What does TCM say about OPEX expiry?"
+
+- **NotebookLM** queried the `TCM Notes` notebook (279 sources) via `notebook_query`.
+- **Local vector DB** queried 11,206 typed KnowledgeUnits in
+  `C:\ICT_Videos\TCM\2023\ingest_output\units\*.jsonl`, filtered on the canonical
+  concept `opex_week` (132 hits: 106 contextual, 11 framework, 7 psychology,
+  4 tip, 3 setup, 1 anecdote).
+
+### 21b. Findings
+
+| Concept | NotebookLM | Vector DB |
+|---|---|---|
+| OpEx = 3rd Friday "Profit Week / Silver Bullet" | yes | yes (conf 0.95) |
+| Mon/Tue up -> Wed down template | yes | yes (verbatim anchor, conf 0.8) |
+| Options expire worthless -> institutions liquidate | yes | yes (conf 0.9) |
+| Wednesday = damage day, news catalyst | yes | yes (conf 0.9) |
+| Asia/early London volatility start | yes | yes (conf 0.8) |
+| Targets daily liquidity pools | yes | yes (conf 0.95) |
+| Sell lasts 2-3 days | no (not explicit) | yes (conf 0.85) |
+| H1 focus over LTF noise | no | yes (framework, conf 0.6) |
+| Risk only during OpEx | no | yes (tip, conf 0.85) |
+| May/June seasonal anomaly | yes (explicit rule) | implied only |
+| Profile Zero / Breakaway Gap mechanics | yes (named profile) | tagged, not synthesized |
+| Body-to-wick "cruel delivery" rule | yes | not extracted |
+
+**Verdict:** Vector DB confirms NotebookLM's OPEX model and adds granular,
+citation-ready facts (verbatim anchors, speaker, session date, timestamp range,
+confidence, testable_claim). NotebookLM wins on synthesis (stitches Profile Zero,
+Breakaway Gap, body-to-wick into a coherent narrative). Vector DB wins on
+precision and backtest-scaffold readiness.
+
+### 21c. Tooling used
+
+- `lancedb 0.34.0` + `pyarrow` installed into `.venv` (was missing)
+- `_opex_inspect.py` (workspace root, scratch script) - loads all 2023 units,
+  filters on `opex_week`, prints breakdown + framework/setup/tip units + high-
+  confidence contextual units. Useful template for future concept validation.
+- `build_lancedb` started for `C:\ICT_Videos\TCM\_2023_lancedb` from 11,206
+  units (killed mid-embed; re-run when a persistent LanceDB is needed):
+  ```powershell
+  python -c "from knowledge_ingest.pipeline.vector_store import build_lancedb; build_lancedb(r'C:\ICT_Videos\TCM\2023\ingest_output\units', r'C:\ICT_Videos\TCM\_2023_lancedb')"
+  ```
+
+### 21d. Next steps
+
+- Build the persistent LanceDB for 2023 (and 2024/2025 once ingested) so
+  `vector_store.search()` works without re-embedding.
+- Cross-check 2024 (75) and 2025 (18) transcripts - not yet ingested with
+  ICT-aware prompts. Only 2023 (242) is in the units dir.
+- Generate backtest-candidate list from the 3 OPEX `setup` units (each has
+  `testable_claim` ready for the scaffolder).
+
+---
+
+## 22. Cross-repo data management (2026-07-21)
+
+This repo (`video2pdf`) is the **producer**: it ingests transcripts, PDFs,
+charts -> typed KnowledgeUnits -> LanceDB. The consumer repo
+(`tvDownloadOHLC`, `C:\Users\vinay\tvDownloadOHLC`) uses the knowledge base in
+its narrative engine (`scripts/trader/briefing_core.py`, `trader_narrative.py`).
+Data lives in ONE place; the consumer reads via API.
+
+### 22a. The three places
+
+| Role | Location | Contents |
+|---|---|---|
+| **Raw data (transcripts/PDFs/charts)** | `C:\ICT_Videos\` | `TCM\{2023,2024,2025}\transcripts`, `Testing\_v4_lancedb`, `Testing\_v4_units`, `TCM\2023\ingest_output\units` |
+| **Producer repo (this one)** | `C:\Users\vinay\video2pdf` | `knowledge_ingest/` pipeline, `HANDOVER.md` (canonical), `serve.py` KB API |
+| **Consumer repo** | `C:\Users\vinay\tvDownloadOHLC` | `scripts/trader/` narrative engine, `kb_bridge.py` consumer |
+
+**Data stays in `C:\ICT_Videos\` and the producer repo.** The consumer repo
+does NOT duplicate data - it queries the KB API server (see section 20) or
+imports the `knowledge_ingest` package via `kb_bridge.py`.
+
+### 22b. Distribution mechanism (CHOSEN: pointer only)
+
+Per user decision (2026-07-21): **do not copy or submodule the HANDOVER**
+into the consumer repo. Instead, the consumer repo's `CLAUDE.md` carries an
+absolute-path pointer to this canonical HANDOVER. This keeps one source of
+truth and avoids drift.
+
+**Action in tvDownloadOHLC:**
+1. Add a context anchor to `C:\Users\vinay\tvDownloadOHLC\CLAUDE.md`:
+   ```
+   * **Knowledge Ingest Handover (canonical, DO NOT edit here)**:
+     [HANDOVER.md](file:///c:/Users/vinay/video2pdf/knowledge_ingest/HANDOVER.md)
+     (producer repo: video2pdf/knowledge_ingest; read for KB state, schema,
+     LanceDB locations, OPEX section 21 validation, cross-repo data flow section 22)
+   ```
+2. Add a consumer-facing companion doc at
+   `C:\Users\vinay\tvDownloadOHLC\docs\architecture\KB_BRIDGE.md` that summarizes:
+   how to start the KB API, how to call it from `briefing_core.py`, the
+   `CONCEPT_TRIGGERS` map in `kb_bridge.py`, and the current KB state
+   (818 chart units + 11,206 TCM-2023 text units). Scope: what the consumer
+   needs to know, not the full producer handover.
+
+**Rules:**
+- `HANDOVER.md` is edited ONLY in the producer repo (`video2pdf`).
+- If a consumer-repo session needs to update handover state, it edits the
+  producer repo and commits there. The consumer doc (`KB_BRIDGE.md`) is the
+  consumer-repo-owned summary.
+- The KB API (`serve.py`, port 8900) is the runtime contract between the two
+  repos. Schema changes to `serve.py` require a corresponding
+  `kb_bridge.py` update in the consumer repo.
+
+### 22c. Runtime contract
+
+The consumer repo talks to the producer repo ONLY through:
+1. **KB API** (`http://127.0.0.1:8900`): `/ask`, `/search`, `/stats`, `/health`
+2. **`kb_bridge.py`** (copy lives in producer; consumer imports or copies):
+   - `get_kb_context_for_narrative(cheat_sheet)` -> context block for LLM
+   - `answer_narrative_question(question)` -> grounded answer + citations
+   - `verify_narrative_claim(claim)` -> supported/unsupported + sources
+
+**Start order:** producer first, then consumer.
+```powershell
+# 1) Producer: start the KB API server
+cd C:\Users\vinay\video2pdf; .\.venv\Scripts\Activate.ps1
+$env:PYTHONPATH = "."
+python -m knowledge_ingest.serve --port 8900
+
+# 2) Consumer: run the narrative engine (any order)
+cd C:\Users\vinay\tvDownloadOHLC; .\.venv\Scripts\Activate.ps1
+python -m scripts.trader.trader_narrative --mode premarket --ticker ES1
+```
+
+### 22d. What NOT to do
+
+- Do NOT copy transcript PDFs or LanceDB files into the consumer repo.
+- Do NOT edit `HANDOVER.md` from the consumer repo - edit it here, the pointer
+  in `CLAUDE.md` will pick up the change.
+- Do NOT import `knowledge_ingest` as a package from the consumer repo (path
+  coupling). Use the HTTP API instead. `kb_bridge.py` is the only piece that
+  may be copied across, and even then prefer importing it from the producer
+  path via `sys.path.insert(0, r"C:\Users\vinay\video2pdf")`.
+
+### 22e. Open follow-ups
+
+1. Add the `CLAUDE.md` pointer + `docs/architecture/KB_BRIDGE.md` to the
+   consumer repo (next session in tvDownloadOHLC).
+2. Wire `kb_bridge.get_kb_context_for_narrative()` into
+   `briefing_core.build_trader_cheat_sheet()` (the actual integration the
+   bridge was built for).
+3. Build eval set (20-30 Q&A pairs) covering OPEX, CSD, killzones, 7 Rules -
+   to measure retrieval quality before/after the bridge is wired in.
+
+**Commits this session (sections 21-22):**
+- (pending): HANDOVER section 21 (OPEX validation) + section 22 (cross-repo data management)
