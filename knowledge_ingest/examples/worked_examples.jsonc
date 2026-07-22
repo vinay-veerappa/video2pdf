@@ -1,0 +1,119 @@
+// Worked examples: what the pipeline produces from the real May 2023 transcripts.
+// These are hand-authored to the schema to show target output BEFORE you run Ollama,
+// so you can sanity-check the schema against your own mental model and refine.
+// (File is .jsonc for comments; real output is plain .jsonl, one object per line.)
+
+// --- Example 1: a SETUP, from 2023-05-10 "Rebalance Macro Short" ---
+{
+  "unit_id": "2023-05-10__01_04_a1b2c3d4e5",
+  "summary": "During the 11:00 rebalance macro, sell the low of the first up-candle taken out (CSD) after 11:50 into a bearish FVG.",
+  "verbatim_anchor": "Sell the low of the first up-candle that gets taken out",
+  "metadata": {
+    "knowledge_type": "setup",
+    "testability": "backtestable",
+    "epistemic_status": "unvalidated_concept",
+    "session_applicability": ["ny_am"],
+    "instrument_applicability": ["NQ"],
+    "concepts_raw": ["rebalance macro", "bearish FVG", "CSD", "swing high stop"],
+    "concepts_canonical": ["macro_rebalance_1100", "fvg", "csd"],
+    "linked_stat_ids": [],
+    "inferred_fields": [],
+    "extraction_confidence": 0.86
+  },
+  "provenance": {
+    "source_file": "2023-05-10",
+    "source_type": "transcript",
+    "source_credibility": "trusted_educator",
+    "session_date": "2023-05-10",
+    "speaker": "Kish",
+    "chunk_id": "2023-05-10:1",
+    "timestamp_range": "00:11:00 - 00:13:30",
+    "extractor_model": "qwen3:14b",
+    "extracted_at": "2026-07-18T10:00:00"
+  },
+  "setup": {
+    "name": "Rebalance Macro Short (11:00)",
+    "regime_precondition": "Market away from objective; unfilled bearish FVG present",
+    "bias_source": "HTF draw lower / ONS imbalance objective",
+    "timing_gate": "11:00 rebalance macro, entries after 11:50",
+    "trigger": "11:00 macro trades into bearish FVG; CSD as first up-candle low is taken",
+    "entry": "Sell low of first up-candle taken out after 11:50",
+    "invalidation": null,
+    "target_logic": "ONS imbalance objective (~100+ point drop cited)",
+    "management": null,
+    "stop_philosophy": "Above swing high, or above first candle of FVG if < 20 points",
+    "quality_notes": "Cited outcome: 100+ point drop to ONS imbalance"
+  }
+}
+
+// --- Example 2: CONTEXTUAL, from 2023-05-16 "Options Expiry Silver Bullet" ---
+{
+  "unit_id": "2023-05-16__01_02_f6g7h8i9j0",
+  "summary": "Every options-expiry week, look for a major NASDAQ sell-off starting Tuesday or Wednesday, usually propelled by high-impact news.",
+  "verbatim_anchor": "every options expiry week, look for a major sell-off",
+  "metadata": {
+    "knowledge_type": "contextual",
+    "testability": "backtestable",
+    "epistemic_status": "unvalidated_concept",
+    "session_applicability": ["any"],
+    "instrument_applicability": ["NQ"],
+    "concepts_raw": ["options expiry", "silver bullet", "high-impact news"],
+    "concepts_canonical": ["opex_week", "news_delivery"],
+    "linked_stat_ids": [],
+    "inferred_fields": [],
+    "extraction_confidence": 0.8
+  },
+  "provenance": {
+    "source_file": "2023-05-16",
+    "source_type": "transcript",
+    "source_credibility": "trusted_educator",
+    "session_date": "2023-05-16",
+    "speaker": "Kish",
+    "chunk_id": "2023-05-16:1",
+    "timestamp_range": null,
+    "extractor_model": "qwen3:14b",
+    "extracted_at": "2026-07-18T10:00:00"
+  },
+  "contextual": {
+    "event_or_condition": "Options Expiry week",
+    "expected_behavior": "Major NASDAQ sell-off, typically beginning Tuesday or Wednesday",
+    "directional_lean": "bearish",
+    "testable_claim": "In OpEx weeks 2004-2024, does NQ show negative Tue-Fri returns vs non-OpEx weeks, and a Wed high-of-week bias?",
+    "date_scope": "Tue/Wed of monthly OpEx week"
+  }
+}
+
+// --- Example 3: PSYCHOLOGY, from 2023-05-16 "Soil Preparation" ---
+{
+  "unit_id": "2023-05-16__02_05_k1l2m3n4o5",
+  "summary": "You can't solve a trading problem with the same mindset that caused it; declutter before studying and pivot to an adjacent concept if one is frustrating you.",
+  "verbatim_anchor": "cannot solve a trading problem with the same state of mind",
+  "metadata": {
+    "knowledge_type": "psychology",
+    "testability": "not_testable",
+    "epistemic_status": "unvalidated_concept",
+    "session_applicability": ["any"],
+    "instrument_applicability": ["any"],
+    "concepts_raw": ["soil preparation", "declutter"],
+    "concepts_canonical": [],
+    "linked_stat_ids": [],
+    "inferred_fields": [],
+    "extraction_confidence": 0.9
+  },
+  "provenance": {
+    "source_file": "2023-05-16",
+    "source_type": "transcript",
+    "source_credibility": "trusted_educator",
+    "session_date": "2023-05-16",
+    "speaker": "Kish",
+    "chunk_id": "2023-05-16:2",
+    "timestamp_range": null,
+    "extractor_model": "qwen3:14b",
+    "extracted_at": "2026-07-18T10:00:00"
+  },
+  "psychology": {
+    "principle": "Can't fix a problem from the mindset that created it; prepare mental state before study.",
+    "trigger_situation": "Feeling frustrated/annoyed by a concept while studying",
+    "prescribed_action": "Declutter mind; pivot to an adjacent concept (e.g. Order Flow instead of Order Blocks) until ready to reintegrate."
+  }
+}

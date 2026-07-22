@@ -544,7 +544,7 @@ NOTES:
         return None
 
 
-def transcribe_video_local(video_path, output_folder, method='whisper', model_size='base', api_key=None, output_filename=None):
+def transcribe_video_local(video_path, output_folder, method='whisper', model_size='base', api_key=None, output_filename=None, language=None):
     """
     Transcribe a local video file using either OpenAI Whisper (local) or Google Gemini (cloud).
     
@@ -576,7 +576,7 @@ def transcribe_video_local(video_path, output_folder, method='whisper', model_si
 
     try:
         if method == 'whisper':
-            return _transcribe_with_whisper(video_path, output_path, model_size)
+            return _transcribe_with_whisper(video_path, output_path, model_size, language=language)
         elif method == 'gemini':
             return _transcribe_with_gemini(video_path, output_path, api_key)
         else:
@@ -595,7 +595,7 @@ _CACHED_WHISPER_MODEL = None
 _CACHED_FASTER_WHISPER_MODEL = None
 _CACHED_MODEL_SIZE = None
 
-def _transcribe_with_whisper(video_path, output_path, model_size):
+def _transcribe_with_whisper(video_path, output_path, model_size, language=None):
     """Transcribe using OpenAI Whisper or Faster-Whisper locally."""
     global _CACHED_WHISPER_MODEL, _CACHED_FASTER_WHISPER_MODEL, _CACHED_MODEL_SIZE
     
@@ -631,7 +631,11 @@ def _transcribe_with_whisper(video_path, output_path, model_size):
             _CACHED_MODEL_SIZE = model_size
         
         print("Transcribing audio with Faster-Whisper (this may take a while)...")
-        segments, info = model.transcribe(video_path, beam_size=5)
+        if language:
+             print(f"Forcing language: {language}")
+             segments, info = model.transcribe(video_path, beam_size=5, language=language)
+        else:
+             segments, info = model.transcribe(video_path, beam_size=5)
         
         print(f"Detected language: {info.language} with probability {info.language_probability:.2f}")
         

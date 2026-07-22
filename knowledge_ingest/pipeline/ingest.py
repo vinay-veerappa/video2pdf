@@ -323,13 +323,17 @@ class IngestPipeline:
                 payload = payload_cls(**{k: v for k, v in ext["payload"].items()
                                          if k in payload_cls.model_fields})
                 unit_kwargs[_PAYLOAD_ATTR[ktype]] = payload
-            except ValidationError:
-                pass
+            except ValidationError as e:
+                print(f"      ! payload validation failed for {ktype}: {str(e)[:100]}")
+                print(f"        payload keys: {list(ext['payload'].keys())}")
+        else:
+            print(f"      ! no payload for {ktype} — skipping unit")
+            return None
 
         try:
             return KnowledgeUnit(**unit_kwargs)
         except ValidationError as e:
-            print(f"      ! unit validation failed: {str(e)[:80]}")
+            print(f"      ! unit validation failed: {str(e)[:120]}")
             return None
 
     # ---- process one file ------------------------------------------------ #

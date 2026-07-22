@@ -64,7 +64,7 @@ def process_youtube_playlist(url, output_dir, lang='en', prefer_auto=False):
     print(f"Output directory: {playlist_folder}")
 
 
-def process_local_directory(input_path, output_dir, model_size='base', recursive=True):
+def process_local_directory(input_path, output_dir, model_size='base', recursive=True, lang=None):
     """Process local directory recursively."""
     input_path = Path(input_path)
     print(f"\n=== Processing Local Directory: {input_path} ===")
@@ -82,6 +82,9 @@ def process_local_directory(input_path, output_dir, model_size='base', recursive
             
     # Remove duplicates
     media_files = sorted(list(set(media_files)))
+    
+    # Exclude 2023 directory (already processed with different naming)
+    media_files = [f for f in media_files if '2023' not in str(f.parent)]
     
     if not media_files:
         print("No media files found.")
@@ -122,7 +125,8 @@ def process_local_directory(input_path, output_dir, model_size='base', recursive
                 target_folder,
                 method='whisper',
                 model_size=model_size,
-                output_filename=sanitize_name
+                output_filename=sanitize_name,
+                language=lang
             )
             
             if res_path:
@@ -139,7 +143,7 @@ def main():
     
     parser.add_argument("input", help="YouTube Playlist URL or Local Directory Path")
     parser.add_argument("-o", "--output", default="bulk_transcripts", help="Output directory")
-    parser.add_argument("--lang", default="en", help="Language code (YouTube only)")
+    parser.add_argument("--lang", default="en", help="Language code (e.g. 'en')")
     parser.add_argument("--auto", action="store_true", help="Prefer auto-generated subtitles (YouTube only)")
     parser.add_argument("--model", default="base", help="Whisper model size (tiny, base, small, medium, large)")
     parser.add_argument("--no-recursive", action="store_true", help="Do not search subdirectories (Local only)")
@@ -151,7 +155,7 @@ def main():
         process_youtube_playlist(args.input, args.output, args.lang, args.auto)
     elif os.path.exists(args.input):
         if os.path.isdir(args.input):
-            process_local_directory(args.input, args.output, args.model, not args.no_recursive)
+            process_local_directory(args.input, args.output, args.model, not args.no_recursive, lang=args.lang)
         elif os.path.isfile(args.input):
              # Single file
              try:
@@ -161,7 +165,8 @@ def main():
                     args.output,
                     method='whisper',
                     model_size=args.model,
-                    output_filename=sanitize_filename(Path(args.input).stem)
+                    output_filename=sanitize_filename(Path(args.input).stem),
+                    language=args.lang
                  )
              except Exception as e:
                  print(f"Error: {e}")
