@@ -949,3 +949,61 @@ The HTTP API (`serve.py`) makes the knowledge base accessible to:
 The LLM model used for synthesis is configurable (`--model` flag on serve.py, or
 `model` parameter in the Python API). Currently `deepseek-v4-flash:cloud` — fast,
 grounded, no hallucination. Can be swapped to any Ollama model.
+
+### 20j. KB bridge — connecting to tvdownloadOHLC narrative engine (2026-07-21)
+
+`knowledge_ingest/kb_bridge.py` connects the ICT knowledge base to the
+`tvdownloadOHLC` narrative engine. It replaces the static `ICT_CONCEPTS_KB.md`
+with dynamic RAG retrieval that matches the day's actual market context.
+
+**Three integration points:**
+
+1. **`get_kb_context_for_narrative(cheat_sheet)`** — scans the narrative cheat
+   sheet for ICT concepts (FVG, CSD, MSS, killzone, PDH/PDL, midnight open, etc.),
+   retrieves relevant KB units via the API server, formats as a context block
+   appended to the cheat sheet. Usage in `briefing_core.py`:
+   ```python
+   from knowledge_ingest.kb_bridge import get_kb_context_for_narrative
+   kb_ctx = get_kb_context_for_narrative(cheat_sheet_text)
+   cheat_sheet += "\n" + kb_ctx
+   ```
+
+2. **`answer_narrative_question(question)`** — full RAG for interactive narrative
+   refinement. Returns grounded answer with source citations.
+
+3. **`verify_narrative_claim(claim)`** — post-narrative fact-checking. Searches
+   KB for units related to the claim, returns `{"supported": bool, "sources": [...]}`.
+
+**How it works:** The cheat sheet mentions "FVG below 20030" and "killzone NY AM" →
+the bridge detects those concepts → retrieves the LumiTrader FVG setup definition +
+the ICTNotes killzone timing reference → appends as context → the narrative LLM now
+has grounded definitions matching today's market, with provenance.
+
+**Tested:** Detected 7 concepts in a sample cheat sheet, retrieved 4 relevant KB
+units. Requires KB server running (`python -m knowledge_ingest.serve --port 8900`).
+
+**Not yet wired into tvdownloadOHLC** — the bridge module is built and tested,
+but `briefing_core.py` hasn't been modified yet. That's the next step when working
+in the tvdownloadOHLC repo.
+
+### 20k. Session state at close (2026-07-21)
+
+**In progress (background):**
+- TCM transcript re-ingestion with ICT-aware prompts — 3 parallel PowerShell
+  windows (2023: 242 files, 2024: 75 files, 2025: 18 files). 9 transcripts
+  completed so far (62 text units). Run with `--no-skip` to retry failed files
+  after the schema fix (§19b).
+- KB API server on port 8900 (may or may not still be running).
+
+**Next steps when resuming:**
+1. Check ingest progress: `python -m knowledge_ingest.tests.query_kb --text-stats`
+2. If ingest stalled, restart with the commands in §19e (the schema fix is committed)
+3. After ingest completes: `python -m knowledge_ingest.merge_knowledge_base --transcript-dir <text_units_dir>`
+4. Wire `kb_bridge.py` into `tvdownloadOHLC/scripts/trader/briefing_core.py`
+5. Build eval set (20-30 Q&A pairs, §17e) to measure retrieval quality
+
+**Commits this session (beyond §19h):**
+- `3d36fa2`: HANDOVER §19 + design_document §7
+- `5bfd781`: Clean up HANDOVER (1724→779 lines, removed superseded content)
+- `f8821e9`: HANDOVER §20 (RAG/query/API) + serve.py + ask_kb.py + query_kb.py
+- `32713c3`: KB bridge (kb_bridge.py — connects to tvdownloadOHLC narrative)
