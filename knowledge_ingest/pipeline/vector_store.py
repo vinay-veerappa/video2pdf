@@ -79,6 +79,7 @@ def build_lancedb(units_dirs, db_path: str = "./knowledge.lancedb",
             "concepts": ",".join(meta.get("concepts_canonical", [])),
             "confidence": meta.get("extraction_confidence", 0.0),
             "source_file": prov["source_file"],
+            "source_type": prov.get("source_type", ""),
             "session_date": str(prov.get("session_date") or ""),
             "timestamp_range": prov.get("timestamp_range") or "",
             "retrieval_text": rt,
@@ -100,7 +101,8 @@ def build_lancedb(units_dirs, db_path: str = "./knowledge.lancedb",
 def search(query: str, db_path: str = "./knowledge.lancedb", table: str = "knowledge",
            embed_model: str = "nomic-embed-text", k: int = 8,
            knowledge_type: str = None, session: str = None,
-           testability: str = None, min_confidence: float = 0.0):
+           testability: str = None, min_confidence: float = 0.0,
+           source_type: str = None):
     """Metadata-filtered semantic search. Filters applied BEFORE vector ranking."""
     import lancedb
     db = lancedb.connect(db_path)
@@ -117,6 +119,8 @@ def search(query: str, db_path: str = "./knowledge.lancedb", table: str = "knowl
         conds.append(f"testability = '{testability}'")
     if min_confidence:
         conds.append(f"confidence >= {min_confidence}")
+    if source_type:
+        conds.append(f"source_type = '{source_type}'")
     if conds:
         q = q.where(" AND ".join(conds), prefilter=True)
     return q.limit(k).to_list()

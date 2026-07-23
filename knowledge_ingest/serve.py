@@ -29,7 +29,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
-CHART_DB = r"C:\ICT_Videos\Testing\_v4_lancedb"
+CHART_DB = r"C:\ICT_Videos\Testing\unified_knowledge.lancedb"
 LLM_MODEL = "deepseek-v4-flash:cloud"
 
 

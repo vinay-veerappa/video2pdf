@@ -95,6 +95,12 @@ class KnowledgeMetadata(BaseModel):
     knowledge_type: KnowledgeType
     testability: Testability
     epistemic_status: EpistemicStatus = EpistemicStatus.UNVALIDATED
+    domains: List[str] = Field(
+        default_factory=lambda: ["ict"],
+        description="Which knowledge domain(s) this unit covers. "
+                    "e.g. ['ict'], ['gex'], ['ict','gex'] for confluence. "
+                    "Set by the prompt profile used during extraction.",
+    )
     session_applicability: List[Session] = Field(default_factory=lambda: [Session.ANY])
     instrument_applicability: List[Instrument] = Field(default_factory=lambda: [Instrument.ANY])
     concepts_raw: List[str] = Field(
