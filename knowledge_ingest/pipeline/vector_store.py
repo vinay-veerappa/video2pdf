@@ -41,8 +41,12 @@ def load_units(units_dirs):
     return rows
 
 
-def build_lancedb(units_dirs, db_path: str = "./knowledge.lancedb",
+def build_lancedb(units_dirs, db_path: str = None,
                   table: str = "knowledge", embed_model: str = "nomic-embed-text"):
+    if db_path is None:
+        # canonical unified DB under KB_DATA_DIR (see knowledge_ingest/paths.py)
+        from knowledge_ingest.paths import unified_db_path
+        db_path = unified_db_path()
     # embed_model should match config.OllamaConfig.embed_model. Pull it first:
     #   ollama pull nomic-embed-text   (or bge-m3)
     import lancedb
@@ -98,13 +102,16 @@ def build_lancedb(units_dirs, db_path: str = "./knowledge.lancedb",
     print(f"Wrote {len(records)} units to {db_path}::{table}")
 
 
-def search(query: str, db_path: str = "./knowledge.lancedb", table: str = "knowledge",
+def search(query: str, db_path: str = None, table: str = "knowledge",
            embed_model: str = "nomic-embed-text", k: int = 8,
            knowledge_type: str = None, session: str = None,
            testability: str = None, min_confidence: float = 0.0,
            source_type: str = None):
     """Metadata-filtered semantic search. Filters applied BEFORE vector ranking."""
     import lancedb
+    if db_path is None:
+        from knowledge_ingest.paths import unified_db_path
+        db_path = unified_db_path()
     db = lancedb.connect(db_path)
     tbl = db.open_table(table)
     qvec = embed_ollama([query], model=embed_model)[0]

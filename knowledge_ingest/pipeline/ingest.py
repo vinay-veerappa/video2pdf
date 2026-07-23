@@ -31,19 +31,7 @@ from ..schema.models import (
 from ..vocab.ict_vocabulary import map_to_canonical
 from .ollama_client import OllamaClient
 from . import prompts
-
-# ICT-aware prompt overrides (§18m). When cfg.ict_aware=True, these replace
-# the generic classify/extract prompts with ICT domain-knowledge-embedded versions.
-try:
-    from ..sources.ict_text_prompts import (
-        ICT_CLASSIFY_PROMPT, ICT_CLASSIFY_BATCH_PROMPT,
-        ICT_CLASSIFY_SYSTEM, ICT_EXTRACT_SYSTEM,
-        ICT_PAYLOAD_SPECS, ict_extract_prompt, ict_extract_batch_prompt,
-        ict_classify_batch_prompt,
-    )
-    _ICT_AVAILABLE = True
-except ImportError:
-    _ICT_AVAILABLE = False
+from .prompt_builder import resolve_active_profile
 
 _TS = re.compile(r'\[(\d{1,2}:\d{2}(?::\d{2})?)\]')
 
@@ -73,24 +61,21 @@ class IngestPipeline:
         for sub in ("segments", "classified", "units", "notes", "raw"):
             (self.out / sub).mkdir(parents=True, exist_ok=True)
 
-        # ICT-aware prompt swap: replace prompts module references with ICT versions
-        self._ict = cfg.ict_aware and _ICT_AVAILABLE
-        if self._ict:
-            self._classify_prompt = ICT_CLASSIFY_PROMPT
-            self._classify_system = ICT_CLASSIFY_SYSTEM
-            self._classify_batch_prompt_fn = ict_classify_batch_prompt
-            self._extract_system = ICT_EXTRACT_SYSTEM
-            self._extract_prompt_fn = ict_extract_prompt
-            self._extract_batch_prompt_fn = ict_extract_batch_prompt
-        else:
-            self._classify_prompt = prompts.CLASSIFY_PROMPT
-            self._classify_system = prompts.CLASSIFY_SYSTEM
-            self._classify_batch_prompt_fn = prompts.classify_batch_prompt
-            self._extract_system = prompts.EXTRACT_SYSTEM
-            self._extract_prompt_fn = prompts.extract_prompt
-            self._extract_batch_prompt_fn = prompts.extract_batch_prompt
-        if cfg.ict_aware and not _ICT_AVAILABLE:
-            print("WARNING: --ict-aware requested but ict_text_prompts not available, using generic")
+        # Prompt profile resolution (DESIGN.md §9 Phase 2). The active Profile
+        # supplies the classify/extract system+user prompts and the domain tag
+        # stamped onto every extracted KnowledgeMetadata.domains. Resolution
+        # prefers cfg.profile, then falls back to the legacy cfg.ict_aware flag,
+        # then to the "ict" default. See pipeline/prompt_builder.py.
+        self._profile = resolve_active_profile(cfg)
+        self._classify_prompt = self._profile.classify_prompt
+        self._classify_system = self._profile.classify_system
+        self._classify_batch_prompt_fn = self._profile.classify_batch_prompt_fn
+        self._extract_system = self._profile.extract_system
+        self._extract_prompt_fn = self._profile.extract_prompt_fn
+        self._extract_batch_prompt_fn = self._profile.extract_batch_prompt_fn
+        # the domains this run stamps onto every unit (used in _build_unit)
+        self._domains = list(self._profile.domains)
+        print(f"  prompt profile: {self._profile.name} (domains={self._profile.domains})")
 
     # ---- resume (borrowed pattern, adapted to JSONL output) -------------- #
     def _already_done(self, stem: str) -> bool:
@@ -287,6 +272,7 @@ class IngestPipeline:
             testability=Testability(cls.get("testability", "not_testable"))
                 if cls.get("testability") in {t.value for t in Testability} else Testability.NOT_TESTABLE,
             epistemic_status=EpistemicStatus.UNVALIDATED,
+            domains=self._domains,
             session_applicability=_enum_list(cls.get("session_applicability"), Session, Session.ANY),
             instrument_applicability=_enum_list(cls.get("instrument_applicability"), Instrument, Instrument.ANY),
             concepts_raw=raw_concepts,

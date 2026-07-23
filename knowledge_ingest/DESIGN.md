@@ -477,10 +477,17 @@ knowledge_ingest/
 - [ ] Re-merge LanceDB with new PDF units
 
 ### Phase 2: Prompt profile registry
-- [ ] `domains/registry.py` + `domains/ict_profile.py`
-- [ ] `pipeline/prompt_builder.py`
-- [ ] Wire into ingest.py / run.py / mineru_integration.py
+- [x] `domains/registry.py` + `domains/ict_profile.py`
+      (+ `domains/generic_profile.py`, `domains/gex_profile.py` stub,
+       `pipeline/prompt_builder.py`)
+- [x] `pipeline/prompt_builder.py` — `resolve_active_profile(cfg)`;
+      `--profile ict+gex` combines domains (primary wording + unioned tags)
+- [x] Wire into ingest.py / run.py / mineru_integration.py
+      (`--profile` flag; `--ict-aware` kept as deprecated alias; back-compat
+      via `resolve_active_profile` honoring the legacy boolean)
 - [ ] A/B test: structured prompts vs current prose prompts (verify equal-or-better)
+      — registry is the foundation; the A/B harness is deferred until a second
+      domain corpus exists (gex stub registered but no GEX educator ingested yet)
 
 ### Phase 3: Strategy candidate registry
 - [ ] `strategy_candidates.py` — LLM-assisted candidate generation

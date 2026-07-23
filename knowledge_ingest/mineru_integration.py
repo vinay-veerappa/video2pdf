@@ -16,20 +16,25 @@ Usage:
 import os, sys, subprocess, argparse, json, glob, shutil, time
 from pathlib import Path
 
+from knowledge_ingest.paths import (
+    mineru_text_staged_dir, mineru_text_ingest_dir, kb_data_dir,
+)
+
 MINERU_VENV = r"C:\Users\vinay\mineru_venv"
 MINERU_PYTHON = os.path.join(MINERU_VENV, "Scripts", "python.exe")
 
-# Output base for MinerU extractions
-MINERU_OUTPUT_BASE = r"C:\ICT_Videos\Testing\_mineru_output"
+# MinerU raw extraction output. These are transient build artifacts; they live
+# under KB_DATA_DIR (consumer-owned data tree — see knowledge_ingest/paths.py).
+MINERU_OUTPUT_BASE = os.path.join(kb_data_dir(), "ingest", "mineru_output")
 
 # Where to put extracted images for v4 chart extraction
-MINERU_IMAGE_DIR = r"C:\ICT_Videos\Testing\_mineru_images"
+MINERU_IMAGE_DIR = os.path.join(kb_data_dir(), "ingest", "mineru_images")
 
 # Where to put extracted markdown for text ingestion (staged as .txt)
-MINERU_TEXT_DIR = r"C:\ICT_Videos\Testing\_mineru_text"
+MINERU_TEXT_DIR = mineru_text_staged_dir()
 
 # Where the ingest pipeline writes its output (units/, notes/, etc.)
-MINERU_TEXT_INGEST_DIR = r"C:\ICT_Videos\Testing\_mineru_text_ingest"
+MINERU_TEXT_INGEST_DIR = mineru_text_ingest_dir()
 
 
 def check_mineru():
@@ -157,7 +162,7 @@ def collect_text_for_ingest(md_path, dest_dir, pdf_name):
     return dest
 
 
-def _run_text_ingest(text_dir, output_dir, file_filter=None, ict_aware=True):
+def _run_text_ingest(text_dir, output_dir, file_filter=None, ict_aware=True, profile=None):
     """Actually execute the ICT-aware text ingest via IngestPipeline.
 
     Called from process_pdf() when run_text=True. Uses the same IngestPipeline
@@ -166,6 +171,10 @@ def _run_text_ingest(text_dir, output_dir, file_filter=None, ict_aware=True):
     Args:
         ict_aware: if True (default), use ICT-aware prompts (embeds ICT domain
             knowledge into classify/extract). If False, use generic prompts.
+            DEPRECATED in favor of `profile`; kept for back-compat. If `profile`
+            is given it takes precedence.
+        profile: prompt profile name (DESIGN.md §9 Phase 2). A single name or a
+            "+"-joined combination ("ict+gex"). Overrides `ict_aware`.
     """
     from knowledge_ingest.config.config import PipelineConfig
     from knowledge_ingest.pipeline.ingest import IngestPipeline
@@ -175,11 +184,13 @@ def _run_text_ingest(text_dir, output_dir, file_filter=None, ict_aware=True):
     cfg.output_dir = output_dir
     cfg.source_type = "pdf"
     cfg.ict_aware = ict_aware
+    if profile:
+        cfg.profile = profile
     cfg.skip_existing = False
     if file_filter:
         cfg.file_filter = file_filter
 
-    mode = "ict-aware" if ict_aware else "generic"
+    mode = cfg.profile if cfg.profile else ("ict-aware" if ict_aware else "generic")
     print(f"  Ingesting text from {text_dir} -> {output_dir} ({mode})")
     pipeline = IngestPipeline(cfg)
     pipeline.run()
@@ -190,7 +201,8 @@ def _run_text_ingest(text_dir, output_dir, file_filter=None, ict_aware=True):
 
 
 def process_pdf(pdf_path, run_v4=False, run_text=False,
-                text_output_dir=None, text_input_dir=None, ict_aware=True):
+                text_output_dir=None, text_input_dir=None, ict_aware=True,
+                profile=None):
     """Full pipeline: MinerU extract -> route images/text.
 
     Args:
@@ -200,6 +212,8 @@ def process_pdf(pdf_path, run_v4=False, run_text=False,
         text_output_dir: where to write ingest output (default: MINERU_TEXT_INGEST_DIR).
         text_input_dir: where to stage .txt files for ingest (default: MINERU_TEXT_DIR).
         ict_aware: if True (default), use ICT-aware prompts for text ingest.
+            DEPRECATED; use `profile` instead.
+        profile: prompt profile name (DESIGN.md §9 Phase 2). Overrides ict_aware.
     """
     md_path, images_dir = run_mineru(pdf_path)
     if not md_path:
@@ -227,7 +241,8 @@ def process_pdf(pdf_path, run_v4=False, run_text=False,
         out_dir = text_output_dir or MINERU_TEXT_INGEST_DIR
         units_dir = _run_text_ingest(stage_dir, out_dir,
                                     file_filter=f"{pdf_name}.txt",
-                                    ict_aware=ict_aware)
+                                    ict_aware=ict_aware,
+                                    profile=profile)
         return {"pdf": pdf_path, "markdown": md_path, "images": n_images,
                 "text": text_path, "units_dir": units_dir}
 
@@ -248,11 +263,24 @@ def main():
     ap.add_argument("--text-output", default=None,
                     help="override text ingest output dir (default: _mineru_text_ingest)")
     ap.add_argument("--ict-aware", action="store_true", default=True,
-                    help="use ICT-aware prompts for text ingest (default: True)")
+                    help="(deprecated, use --profile) use ICT-aware prompts (default: True)")
     ap.add_argument("--no-ict-aware", action="store_false", dest="ict_aware",
                     help="use generic (domain-agnostic) prompts instead of ICT-aware")
+    ap.add_argument("--profile", default=None,
+                    help="prompt profile (DESIGN.md §9 Phase 2): single name "
+                         "(ict, generic, gex) or '+'-joined (ict+gex). Use "
+                         "'list' to print and exit. Overrides --ict-aware.")
     ap.add_argument("--check", action="store_true", help="just check MinerU installation")
     args = ap.parse_args()
+
+    # `--profile list` prints registered profiles and exits.
+    if args.profile and args.profile.lower() in ("list", "?", "help"):
+        from knowledge_ingest.domains import list_profiles
+        print("Registered prompt profiles:")
+        for p in list_profiles():
+            print(f"  {p.name:10s} domains={p.domains}  — {p.description.splitlines()[0]}")
+        print("\nCombine with '+': e.g. --profile ict+gex")
+        return
 
     if args.check:
         check_mineru()
@@ -264,12 +292,14 @@ def main():
     run_text = args.run_text and not args.no_text
     text_output = args.text_output or MINERU_TEXT_INGEST_DIR
     ict_aware = args.ict_aware
+    profile = args.profile
 
     results = []
 
     if args.pdf:
         r = process_pdf(args.pdf, run_v4=args.run_v4, run_text=run_text,
-                        text_output_dir=text_output, ict_aware=ict_aware)
+                        text_output_dir=text_output, ict_aware=ict_aware,
+                        profile=profile)
         if r:
             results.append(r)
 
@@ -278,7 +308,8 @@ def main():
         print(f"\nFound {len(pdfs)} PDFs in {args.pdf_dir}")
         for pdf in pdfs:
             r = process_pdf(pdf, run_v4=args.run_v4, run_text=run_text,
-                            text_output_dir=text_output, ict_aware=ict_aware)
+                            text_output_dir=text_output, ict_aware=ict_aware,
+                            profile=profile)
             if r:
                 results.append(r)
             print()

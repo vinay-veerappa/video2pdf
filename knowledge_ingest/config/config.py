@@ -99,6 +99,13 @@ class PipelineConfig:
     # use ICT-aware prompts (embeds ICT domain knowledge into classify/extract stages)
     ict_aware: bool = False
 
+    # prompt profile registry key (DESIGN.md §9 Phase 2). A single name ("ict",
+    # "generic", "gex") or a "+"-joined combination ("ict+gex"). When set this
+    # takes precedence over the legacy `ict_aware` boolean. Empty/None -> fall
+    # back to the ict_aware flag, then to the "ict" default. See
+    # pipeline/prompt_builder.resolve_active_profile.
+    profile: str = ""
+
     # units below this extraction_confidence are logged to <stem>_lowconf.json but
     # NOT written to the vector-store JSONL (likely segmentation fragments).
     min_unit_confidence: float = 0.35

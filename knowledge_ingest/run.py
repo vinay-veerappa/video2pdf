@@ -6,6 +6,7 @@ Entry point. Edit config/config.py (or override below), then:
 import argparse
 from .config.config import PipelineConfig
 from .pipeline.ingest import IngestPipeline
+from .paths import unified_db_path
 
 
 def main():
@@ -20,9 +21,14 @@ def main():
                     help="skip ingest; load existing units into LanceDB")
     ap.add_argument("--units", nargs="+", default=None,
                     help="units dir(s) for --build-vectors (default: <output>/units)")
-    ap.add_argument("--db", default="./knowledge.lancedb")
+    ap.add_argument("--db", default=None,
+                    help="output LanceDB path (default: KB_DATA_DIR/unified_knowledge.lancedb)")
     ap.add_argument("--ict-aware", action="store_true",
-                    help="use ICT-aware prompts (embeds ICT domain knowledge)")
+                    help="(deprecated, use --profile ict) use ICT-aware prompts")
+    ap.add_argument("--profile", default=None,
+                    help="prompt profile: a single name (ict, generic, gex) or "
+                         "a '+'-joined combination (ict+gex). Use 'list' to "
+                         "print available profiles and exit. Overrides --ict-aware.")
     args = ap.parse_args()
 
     cfg = PipelineConfig()
@@ -40,6 +46,17 @@ def main():
         cfg.skip_existing = False
     if args.ict_aware:
         cfg.ict_aware = True
+    if args.profile:
+        cfg.profile = args.profile
+
+    # `--profile list` prints registered profiles and exits (no ingest).
+    if args.profile and args.profile.lower() in ("list", "?", "help"):
+        from .domains import list_profiles
+        print("Registered prompt profiles:")
+        for p in list_profiles():
+            print(f"  {p.name:10s} domains={p.domains}  — {p.description.splitlines()[0]}")
+        print("\nCombine with '+': e.g. --profile ict+gex")
+        return
 
     if args.build_vectors:
         from .pipeline.vector_store import build_lancedb
@@ -47,7 +64,7 @@ def main():
         if len(units) > 1:
             from .multidir import assert_no_collisions
             assert_no_collisions(units)
-        build_lancedb(units, db_path=args.db,
+        build_lancedb(units, db_path=args.db or unified_db_path(),
                       embed_model=cfg.ollama.embed_model)
         return
 

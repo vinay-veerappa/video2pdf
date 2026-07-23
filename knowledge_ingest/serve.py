@@ -29,7 +29,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse
 
-CHART_DB = r"C:\ICT_Videos\Testing\unified_knowledge.lancedb"
+from knowledge_ingest.paths import unified_db_path
+
+# Canonical unified LanceDB. Resolved from KB_DATA_DIR (defaults to the
+# consumer repo's data/knowledge/ tree — see knowledge_ingest/paths.py).
+CHART_DB = unified_db_path()
 LLM_MODEL = "deepseek-v4-flash:cloud"
 
 

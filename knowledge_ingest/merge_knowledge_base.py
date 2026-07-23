@@ -17,12 +17,15 @@ import os, sys, json, argparse, glob
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from knowledge_ingest.pipeline.vector_store import build_lancedb, embed_ollama
+from knowledge_ingest.paths import unified_db_path, units_dir as kb_units_dir
 import lancedb
 
-# Default paths
+# Default paths. Chart units (the v4 chart-extract output) remain external
+# (raw input artifact); the unified DB and transcript units default to the
+# consumer-owned KB data tree (see knowledge_ingest/paths.py).
 CHART_UNITS = r"C:\ICT_Videos\Testing\_v4_units\v4_chart_units.jsonl"
-DEFAULT_TRANSCRIPT_DIR = r"C:\ICT_Videos\TCM\2023\ingest_output\units"
-UNIFIED_DB = r"C:\ICT_Videos\Testing\unified_knowledge.lancedb"
+DEFAULT_TRANSCRIPT_DIR = os.path.join(kb_units_dir(), "tcm_2023", "units")
+UNIFIED_DB = unified_db_path()
 
 
 def collect_unit_dirs(chart_path, transcript_dirs=None):
