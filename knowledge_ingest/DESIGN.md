@@ -490,10 +490,14 @@ knowledge_ingest/
       domain corpus exists (gex stub registered but no GEX educator ingested yet)
 
 ### Phase 3: Strategy candidate registry
-- [ ] `strategy_candidates.py` — LLM-assisted candidate generation
-- [ ] Detection function catalog (map KB prose → function names)
-- [ ] Export backtestable setups as candidate JSON
-- [ ] Link candidates back to source units (bidirectional)
+- [x] `strategy_candidates.py` — LLM-assisted candidate generation
+      → `tvDownloadOHLC/scripts/knowledge_bridge/strategy_candidates.py`
+- [x] Detection function catalog (map KB prose → function names)
+      → `tvDownloadOHLC/scripts/knowledge_bridge/detection_catalog.py` (34 entries)
+- [x] Export backtestable setups as candidate JSON
+      → `tvDownloadOHLC/scripts/knowledge_bridge/candidate_export.py`
+- [x] Link candidates back to source units (bidirectional)
+      → `link_candidates_to_units()` + `compute_unit_updates()`
 
 ### Phase 4: Backtest validation loop
 - [ ] `backtest_loop.py` — candidate → backtest → results
