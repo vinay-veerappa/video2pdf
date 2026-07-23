@@ -500,9 +500,17 @@ knowledge_ingest/
       → `link_candidates_to_units()` + `compute_unit_updates()`
 
 ### Phase 4: Backtest validation loop
-- [ ] `backtest_loop.py` — candidate → backtest → results
-- [ ] Write back: candidate.epistemic_status, unit.metadata.linked_stat_ids
-- [ ] Integration with tvdownloadOHLC's prop firm simulator (ADR-021)
+- [x] `backtest_loop.py` — candidate → backtest → results
+      → `tvDownloadOHLC/scripts/knowledge_bridge/backtest_loop.py`
+      (BacktestLoop class: candidate → get_strategy → signals →
+      VectorizedBacktester → PropFirmSimulator → BacktestResult)
+- [x] Write back: candidate.epistemic_status, unit.metadata.linked_stat_ids
+      → `apply_backtest_results()` auto-updates candidate.status +
+      epistemic_status; `compute_unit_updates()` (Phase 3) writes back
+      linked_stat_ids
+- [x] Integration with tvdownloadOHLC's prop firm simulator (ADR-021)
+      → Uses PropFirmSimulator exclusively; run_all_profiles / run_deterministic
+      / run_monte_carlo; FIRM_PROFILES (Apex, TopStep, FTMO)
 
 ### Phase 5: Confluence engine
 - [ ] `confluence_engine.py` — runtime cross-domain confluence
