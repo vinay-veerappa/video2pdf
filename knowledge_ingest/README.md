@@ -1,108 +1,163 @@
 # Knowledge Ingestion Pipeline
 
-Turns trading-education transcripts (and later PDFs / your own design docs) into
-**typed, grounded, filterable knowledge units** with full provenance — the
-foundation for the concept → candidate → backtest → stat → reasoning loop.
+Turns heterogeneous trading-education sources (video transcripts, PDFs, chart
+images, blogs) into **typed, grounded, filterable knowledge units** with full
+provenance — the foundation for the concept -> candidate -> backtest -> trade loop.
 
-This replaces the extraction core of the old `process_transcripts_ollama.py`
-while keeping its proven skeleton (batch loop, resume, per-stage artifacts, retry).
+## Documents
 
-## What changed vs. the old script
+| Document | Purpose | Audience |
+|---|---|---|
+| [DESIGN.md](DESIGN.md) | Architecture, goals, design decisions, roadmap | Anyone who needs to understand the whole system |
+| [HANDOVER.md](HANDOVER.md) | Session-by-session state log (what's done, what's in progress) | Next session / next developer |
+| **README.md** (this file) | How to run the pipeline | Operator (you, running ingest) |
+| [sources/INPUTS.md](sources/INPUTS.md) | How to feed each source type | Operator (feeding new sources) |
+| [vocab/VOCABULARY_REVIEW.md](vocab/VOCABULARY_REVIEW.md) | Vocabulary decisions and open items | Anyone editing the vocabulary |
 
-| Old | New |
-|---|---|
-| "Extract EVERYTHING" into free-text markdown | Structured JSON validated against a schema |
-| One treatment for all content | Per-unit **classification** into 6 knowledge types, each with its own schema |
-| No metadata | `session`, `instrument`, `testability`, `epistemic_status`, provenance on every unit |
-| Char-count chunking (splits concepts) | Timestamp/topic **segmentation** → one concept per unit |
-| One model for everything | **Tiered**: small model classifies/segments, strong model extracts |
-| Open-ended prompt (hallucination-prone) | Grounded prompt: null-if-not-stated, `inferred_fields`, confidence score |
-| Concept names free-form | Raw names kept **and** mapped to a controlled vocabulary (dedupe) |
+Start with **DESIGN.md** for the big picture, then come here for commands.
 
-The good parts of the old script were kept: resume with sanity-check, saving
-every intermediate artifact, retry-with-backoff, timestamp preservation.
+---
 
-## Pipeline stages (large-context cloud via Ollama)
+## Quick start
 
-1. **Segment** (whole file, one call) — a large cloud context window means the segmenter
-   sees the *entire* session at once, so boundary decisions improve: a concept introduced
-   early and referenced later stays coherent. Splits only on truly enormous files.
-2. **Classify** (batched, one call per file) — all segments classified together, returned
-   as an ordered array; still one classification per unit.
-3. **Extract** (batched PER TYPE) — same-type units share one call so the model sees the
-   day's shared context (regime, bias, HTF draw) and nothing gets orphaned from context,
-   while still emitting one grounded record per unit with its own confidence + inferred_fields.
-   Large groups chunk by `extract_batch_size`. Skipped for low-value units (pure anecdotes).
-4. **Assemble** — validate into `KnowledgeUnit` (pydantic), map concepts to controlled
-   vocabulary, write JSONL + readable `.md`. Missing units from any batch fall back to
-   per-unit calls, so nothing is silently dropped.
-5. **Vectorize** (separate step) — load into LanceDB with metadata columns for
-   filter-before-rank retrieval.
-
-**Why batched-per-type, not per-unit or whole-file:** per-unit extraction has the best
-isolation but can orphan a unit from context stated in a sibling segment (e.g. the ONS
-precondition described three segments earlier). Whole-file mixes types and dilutes
-attention. Batching *within a type* keeps per-unit grounding + audit signal while
-letting shared session context complete each record.
-
-## Cloud models via Ollama
-
-Ollama exposes cloud models through the same `/api/generate` endpoint, so only the model
-NAME and `num_ctx` change in `config/config.py`. Set `segmenter_model` / `classifier_model`
-/ `extractor_model` to your cloud model name and raise `*_num_ctx` to the window you have.
-
-## Install
-
-```bash
-pip install pydantic requests lancedb pyarrow
-# Ollama running locally with the models named in config/config.py, e.g.:
-ollama pull llama3.2:3b        # classifier / segmenter (cheap)
-ollama pull qwen3:14b          # extractor (strong) — use your largest comfortable model
-ollama pull nomic-embed-text   # embeddings
+```powershell
+cd C:\Users\vinay\video2pdf
+.\.venv\Scripts\Activate.ps1
+$env:PYTHONPATH = "."
 ```
 
-## Run
+### Transcripts (text)
 
-```bash
-# 1) ingest transcripts -> units/*.jsonl + notes/*.md
-python -m knowledge_ingest.run --input /path/to/transcripts --output /path/to/out
-
-# for your own design docs / PDFs (converted to text), tag credibility:
-python -m knowledge_ingest.run --input /path/to/own_docs --source-type own_doc
-
-# 2) load units into LanceDB
-python -m knowledge_ingest.run --build-vectors --output /path/to/out --db ./knowledge.lancedb
+```powershell
+python -m knowledge_ingest.run `
+  --input "C:\ICT_Videos\TCM\2023\transcripts" `
+  --output "C:\ICT_Videos\Testing\_text_ict_2023" `
+  --source-type transcript --ict-aware --no-skip
 ```
 
-## Query example
+### Text-heavy PDFs (MinerU -> text ingest)
+
+```powershell
+# Single command: MinerU extract + ICT-aware text ingest
+python -m knowledge_ingest.mineru_integration `
+  --pdf "C:\path\to\file.pdf" `
+  --text-output "C:\ICT_Videos\Testing\_text_ict_pdf"
+
+# Batch: all PDFs in a directory
+python -m knowledge_ingest.mineru_integration `
+  --pdf-dir "C:\path\to\pdfs" --batch
+
+# Check MinerU installation
+python -m knowledge_ingest.mineru_integration --check
+```
+
+### Chart/image-heavy PDFs (triage -> render -> v4 chart extraction)
+
+```powershell
+# 1. Triage: render PDF pages to PNG, route text pages to text pipeline
+python -m knowledge_ingest.tests.triage_pdf `
+  --pdfs "C:\path\to\pdfs" --render
+
+# 2. V4 chart extraction on rendered images (human-in-the-loop)
+python -m knowledge_ingest.tests.run_v4_full --out-dir "C:\ICT_Videos\Testing\_v4_run"
+
+# 3. Convert v4 JSON -> KnowledgeUnit JSONL
+python -m knowledge_ingest.tests.convert_v4_to_units
+```
+
+### Merge into unified LanceDB
+
+```powershell
+python -m knowledge_ingest.merge_knowledge_base `
+  --transcript-dir "C:\ICT_Videos\Testing\_text_ict_ingest\units" `
+                   "C:\ICT_Videos\Testing\_text_ict_2025\units" `
+                   "C:\ICT_Videos\Testing\_text_ict_pdf_tcm\units" `
+  --db "C:\ICT_Videos\Testing\unified_knowledge.lancedb"
+```
+
+### Query the knowledge base
+
+```powershell
+# CLI -- RAG with LLM synthesis
+python -m knowledge_ingest.tests.ask_kb "What is the Sharp Turn entry model?"
+python -m knowledge_ingest.tests.ask_kb "How does Kish use CSD?" --sources --k 5
+
+# Interactive REPL
+python -m knowledge_ingest.tests.query_kb
+
+# HTTP API server
+python -m knowledge_ingest.serve --port 8900
+# Then: POST http://localhost:8900/ask {"question": "What is CSD?"}
+```
+
+### Python library
 
 ```python
 from knowledge_ingest.pipeline.vector_store import search
 
-# "what setups apply to NY AM, testable, high confidence"
+# Semantic search with metadata filters
 hits = search("liquidity sweep reversal entry",
+              db_path=r"C:\ICT_Videos\Testing\unified_knowledge.lancedb",
               knowledge_type="setup", session="ny_am",
               testability="backtestable", min_confidence=0.6, k=8)
 ```
 
+---
+
+## Pipeline stages
+
+1. **Segment** (whole file, one call) -- splits into topic-coherent units
+2. **Classify** (batched, one call per file) -- each unit -> one of 6 knowledge types
+3. **Extract** (batched per type) -- typed payload + concepts + confidence
+4. **Assemble** -- validate into KnowledgeUnit (pydantic), map to vocab, write JSONL
+5. **Vectorize** (separate step) -- load into LanceDB for semantic search
+
+See [DESIGN.md section 3](DESIGN.md) for the full architecture.
+
+## Knowledge types
+
+| Type | Description | Flows to backtest? |
+|---|---|---|
+| `setup` | Mechanical, repeatable trade rule | yes |
+| `contextual` | Calendar/regime anticipation (partly testable) | yes (if `testable_claim`) |
+| `framework` | Analytical method / how-to | no (guides analysis) |
+| `tip` | Heuristic rule-of-thumb | no |
+| `psychology` | Mindset / discipline | no |
+| `anecdote` | War story with embedded heuristic | no |
+
+## Prompt profiles
+
+The pipeline uses domain-specific prompt profiles so the model understands what
+it's reading:
+
+- `--ict-aware` -- ICT/Smart Money Concepts (176 concepts, 15 educators, 8+ frameworks)
+- (no flag) -- generic domain-agnostic prompts
+
+**Planned:** `--profile ict+gex` for composable multi-domain prompts. See
+[DESIGN.md section 3](DESIGN.md).
+
 ## Tuning
 
-Everything lives in `config/config.py`: model names per tier, temperatures,
-context sizes, segment sizes, which types to skip extracting, resume on/off.
+Everything lives in `config/config.py`: model names per stage, temperatures,
+context sizes, segment sizes, batch sizes, confidence thresholds.
 
-## Where this plugs into the bigger system
+## Dependencies
 
-- `units/*.jsonl` → **vector store** (semantic Q&A) **and** the **strategy-candidate
-  registry** (filter `knowledge_type == "setup"`, `testability == "backtestable"`).
-- `contextual` units with a `testable_claim` → feed the **backtest scaffolder**
-  (validate against your 20-year data) → results populate the **stats registry**.
-- Validated stats write back `linked_stat_ids` + flip `epistemic_status` on the unit,
-  closing the loop and making the eventual execution layer auditable.
+```bash
+pip install pydantic requests lancedb pyarrow pandas
+# Ollama running locally with models from config/config.py:
+ollama pull deepseek-v4-flash:cloud   # segmenter/classifier/extractor
+ollama pull gemma4:31b-cloud          # chart VLM
+ollama pull nomic-embed-text          # embeddings
+```
 
-## Next steps to discuss
+**MinerU** (for PDFs) lives in a separate venv: `C:\Users\vinay\mineru_venv`
+(Python 3.12.10, `mineru` v3.4.4). See [DESIGN.md](DESIGN.md) and
+[HANDOVER.md section 23d](HANDOVER.md) for details.
 
-- **Controlled vocabulary** is seeded from 6 transcripts (27 concepts). It will grow;
-  consider an "unmapped raw concepts" report after a full run to find gaps.
-- **Segmentation quality** is the biggest quality lever — verify on ~5 files before
-  the full 200-file run.
-- **Eval set**: 20–30 known Q&A to verify retrieval before wiring into reasoning.
+## Current knowledge base state
+
+- **4,168 units** in `C:\ICT_Videos\Testing\unified_knowledge.lancedb`
+- 818 chart units (v4, gemma4) + 3,350 text units (ICT-aware, deepseek-v4-flash)
+- 176 canonical ICT concepts
+- See [HANDOVER.md](HANDOVER.md) for the latest state

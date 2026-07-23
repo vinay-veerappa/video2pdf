@@ -474,7 +474,7 @@ python -m knowledge_ingest.merge_knowledge_base --transcript-dir <text_units_dir
   that the pipeline expects. The `transcripts_zip/` in the workspace was a partial
   142-file subset of 2023 only.
 
-### 19d. MinerU integration — PDF → image/text routing
+### 19d. MinerU integration — PDF → image/text routing (FIXED — see §23)
 
 `knowledge_ingest/mineru_integration.py` provides a clean interface to:
 1. Run MinerU on a PDF → get markdown + extracted images
@@ -508,9 +508,13 @@ python -m knowledge_ingest.run --input "C:\ICT_Videos\TCM\2024\transcripts" --ou
 python -m knowledge_ingest.run --input "C:\ICT_Videos\TCM\2025\transcripts" --output "C:\ICT_Videos\Testing\_text_ict_2025" --source-type transcript --ict-aware --no-skip
 ```
 
-After all 3 complete, merge into unified LanceDB:
+After all 3 complete, merge into unified LanceDB (accepts multiple dirs, §23):
 ```powershell
-python -m knowledge_ingest.merge_knowledge_base --transcript-dir "C:\ICT_Videos\Testing\_text_ict_2023\units"
+python -m knowledge_ingest.merge_knowledge_base `
+  --transcript-dir "C:\ICT_Videos\Testing\_text_ict_2023\units" `
+                   "C:\ICT_Videos\Testing\_text_ict_2024\units" `
+                   "C:\ICT_Videos\Testing\_text_ict_2025\units" `
+  --db "C:\ICT_Videos\Testing\unified_knowledge.lancedb"
 ```
 
 ### 19f. Testing the knowledge base
@@ -1164,3 +1168,171 @@ python -m scripts.trader.trader_narrative --mode premarket --ticker ES1
 
 **Commits this session (sections 21-22):**
 - (pending): HANDOVER section 21 (OPEX validation) + section 22 (cross-repo data management)
+
+---
+
+---
+
+## 23. Session — Unified LanceDB built; MinerU integration fixed (2026-07-23)
+
+**Date:** session following section 22. This section documents the unified LanceDB
+merge (chart + text + PDF units), the MinerU integration bugs that were found
+and fixed, and the TWO paths for PDF processing.
+
+### 23a. Unified LanceDB — COMPLETED
+
+`merge_knowledge_base.py` was updated to accept multiple `--transcript-dir` args
+(`nargs="+"`). Successfully merged all chart + text + PDF units into one LanceDB.
+
+**See [DESIGN.md](DESIGN.md) for the architecture and [README.md](README.md) for commands.**
+
+**DB:** `C:\ICT_Videos\Testing\unified_knowledge.lancedb` (table `knowledge`)
+**Total units:** 4,168 (re-merged after richer PDF extraction)
+
+| knowledge_type | count |
+|---|---:|
+| framework | 1,662 |
+| setup | 904 |
+| contextual | 703 |
+| tip | 510 |
+| psychology | 370 |
+| anecdote | 19 |
+
+**Sources merged (4 dirs, 0 collisions):**
+- 818 chart units: `C:\ICT_Videos\Testing\_v4_units\v4_chart_units.jsonl`
+- 3,327 transcript units: `_text_ict_ingest\units` (317 .jsonl) + `_text_ict_2025\units` (37 .jsonl)
+- 23 PDF text units: `_text_ict_pdf_tcm\units` (2 .jsonl — from MinerU+ICT-aware text ingest)
+
+**Known gap:** `source_type` column is empty in LanceDB — `vector_store.py`
+`build_lancedb()` doesn't surface `source_type` as a top-level column (it's
+nested in `full_json`). To filter by chart-vs-transcript origin, add
+`source_type` to the record dict in `build_lancedb`. (See DESIGN.md section 6.)
+
+### 23b. TWO PDF processing paths — choose by content type
+
+There are two distinct workflows for PDFs, chosen by content type:
+
+**Path A — Chart/image-heavy PDFs (Lumi book, Flux NY Guide, MMXM, Vinay_Models):**
+These were processed as CHART IMAGES via the v4 chart pipeline. The ICT-aware
+improvement that enabled this was the v4 CHART prompt (section 18), NOT the text pipeline.
+  1. `triage_pdf.py --pdfs <pdfs> --render` → renders each page to PNG in `_triage_renders/`
+  2. `run_v4_full.py` → v4 chart extraction (gemma4 ICT-aware prompt) on each PNG
+  3. `convert_v4_to_units.py` → converts to KnowledgeUnit JSONL → `_v4_units/v4_chart_units.jsonl`
+  4. This produced the 818 chart units already in the unified LanceDB.
+  - Lumi book: 435 pages, Flux NY Guide: 67 pages, MMXM, Vinay_Models (119), ICTNotes (78)
+  - Triage routes text-dominant pages to text pipeline for free; only image pages need VLM.
+
+**Path B — Text-heavy PDFs (Trader Blue Print Series, You Tube notes):**
+Use `mineru_integration.py` → MinerU extracts text → ICT-aware text pipeline.
+This is the path for text-heavy PDFs (fixed this session, section 23c).
+  - Trader Blue Print Series: 8 text units, 39 chart images (for later v4)
+  - You Tube notes: 0 text units, 38 chart images (image-heavy → needs v4 path A)
+
+**Choosing the right path:**
+- PDF mostly chart screenshots/diagrams → Path A (triage + render + v4)
+- PDF mostly text/notes → Path B (MinerU + text ingest)
+- Mixed → Path A handles both: triage routes text pages to text pipeline,
+  image pages to v4. MinerU is the alternative text extractor when poppler is missing.
+
+### 23c. MinerU integration — bugs found and FIXED
+
+`mineru_integration.py` (written during section 19d) had 5 bugs that prevented it from
+running. All fixed this session:
+
+**Bug 1 (FIXED) — wrong package name in `check_mineru()`:**
+- Was: `import magic_pdf` (the OLD package name)
+- Now: `import mineru` (v3.4.4 — package was renamed) + verify `mineru.exe` exists
+
+**Bug 2 (FIXED) — wrong CLI invocation in `run_mineru()`:**
+- Was: `python -m magic_pdf.cli -p ... -o ... -m auto`
+- Now: `C:\Users\vinay\mineru_venv\Scripts\mineru.exe -p ... -o ... -m auto -b hybrid-engine`
+
+**Bug 3 (FIXED) — wrong output path expectation in `run_mineru()`:**
+- Was: `<output>/<name>/auto/<name>.md`
+- Now: `<output>/<name>/hybrid_auto/<name>.md` (with `auto/` + glob fallback)
+
+**Bug 4 (FIXED) — was only half a pipeline (design gap):**
+- Was: `process_pdf()` only extracted + PRINTED "next steps" commands
+- Now: `process_pdf()` with `--run-text` (default True) ACTUALLY executes the
+  ICT-aware text ingest via IngestPipeline (not just prints it).
+- Single command does: MinerU extract → stage .txt → run text ingest
+
+**Bug 5 (NOT fixed — low priority) — `pdf_extract.py` broken:**
+- `pdf_extract.py` relies on poppler-utils (`pdftotext`, `pdfimages`, `pdftoppm`, etc.)
+- None installed on PATH; pdfplumber fallback also not installed.
+- Superseded by MinerU (Path B) and triage+render (Path A). Don't use pdf_extract.py.
+
+### 23d. MinerU environment — correct setup (verified this session)
+
+- **Venv:** `C:\Users\vinay\mineru_venv` (Python 3.12.10 — MinerU requires 3.10+)
+- **Package:** `mineru` v3.4.4 (NOT `magic_pdf` — that's the old name)
+- **CLI:** `C:\Users\vinay\mineru_venv\Scripts\mineru.exe`
+- **Ingest venv:** `C:\Users\vinay\video2pdf\.venv` (separate — holds lancedb, pydantic, ollama client, requests)
+- **NEVER cross the two venvs** — MinerU pulls torch/paddle/vlm engines that conflict with the ingest deps
+
+**Working MinerU CLI (verified against prior successful runs):**
+```
+C:\Users\vinay\mineru_venv\Scripts\mineru.exe -p <pdf_path> -o <output_dir> -m auto -b hybrid-engine
+```
+Output layout: `<output_dir>/<pdf_stem>/hybrid_auto/<pdf_stem>.md` + `images/*.png`
+
+**Usage (after fixes):**
+```
+python -m knowledge_ingest.mineru_integration --pdf <path>
+python -m knowledge_ingest.mineru_integration --pdf-dir <dir> --batch
+python -m knowledge_ingest.mineru_integration --check
+```
+Add `--no-text` to only do MinerU extraction (skip text ingest).
+Add `--text-output <dir>` to override ingest output dir.
+
+### 23e. End-to-end verification (this session)
+
+Both new PDFs processed successfully via the fixed integration:
+- `Trader Blue Print Series.pdf`: MinerU 93s → 39 images → 8 text units (framework×4, tip×4)
+- `You Tube notes.pdf`: MinerU 45s → 38 images → 0 text units (image-heavy; needs v4 path A)
+
+Unified LanceDB rebuilt with all 4 dirs: 4,153 units total.
+
+### 23f. Remaining gaps
+
+1. **`source_type` column in LanceDB** — still empty; add to `build_lancedb` records
+   so queries can filter by chart-vs-transcript-vs-pdf origin.
+2. **File-type auto-detection in `run.py`** — not implemented. Currently you must
+   choose Path A (triage+render+v4) or Path B (mineru_integration) manually.
+   The "point at a directory and it handles everything" goal would require `run.py`
+   to detect .pdf/.png/.txt and auto-route.
+3. **Chart images from MinerU** — staged in `_mineru_images` but NOT auto-extracted
+   (intentional — v4 is human-in-the-loop: propose → review → commit).
+4. **`pdf_extract.py`** — broken (no poppler); superseded by the two paths above.
+
+### 23g. Prior successful MinerU outputs (before integration fix)
+
+- `_mineru_out/Flux_NY_Guide/hybrid_auto/Flux_NY_Guide.md` + 4 images
+- `_mineru_out/MMXM/hybrid_auto/MMXM.md` + 6 images
+- `_mineru_img_test/` — 7 v4 ground-truth cases (Arjo15mSTEntryModel, BSL_DOL, DailyPo3,
+  ict_mmxm_notes, ICT_Month10IndexTradeSetups, LRS, RTH ORG Repricing Model Bias)
+
+### 23h. Design doc + documentation sync (this session)
+
+Created `DESIGN.md` — the canonical architecture/goals/roadmap document. Covers:
+- 3-layer architecture (Ingestion -> Knowledge Base -> Strategy/Execution)
+- Design decisions (domain-specific ingestion, runtime confluence, free-text
+  payloads + structured candidates, producer/consumer split)
+- Planned Layer 3: Strategy Candidate Registry, Confluence Engine, Backtest
+  Validation Loop, Automated Trading
+- 6-phase roadmap
+
+Synced all documentation:
+- `DESIGN.md` (NEW) — architecture, goals, design decisions, roadmap, file layout
+- `README.md` (UPDATED) — current commands (MinerU, ICT-aware, two PDF paths, query)
+- `sources/INPUTS.md` (UPDATED) — two PDF paths (MinerU + triage), removed broken pdf_extract.py refs
+- `HANDOVER.md` (UPDATED) — section 23 (this session), links to DESIGN.md
+
+Document map (from DESIGN.md header):
+| Doc | Purpose |
+|---|---|
+| DESIGN.md | Architecture & goals (read first) |
+| README.md | How to run (commands) |
+| INPUTS.md | How to feed sources (routing) |
+| HANDOVER.md | Session state log |
+| VOCABULARY_REVIEW.md | Vocab decisions |

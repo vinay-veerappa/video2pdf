@@ -25,8 +25,11 @@ DEFAULT_TRANSCRIPT_DIR = r"C:\ICT_Videos\TCM\2023\ingest_output\units"
 UNIFIED_DB = r"C:\ICT_Videos\Testing\unified_knowledge.lancedb"
 
 
-def collect_unit_dirs(chart_path, transcript_dir=None):
-    """Collect all unit JSONL directories to merge."""
+def collect_unit_dirs(chart_path, transcript_dirs=None):
+    """Collect all unit JSONL directories to merge.
+
+    transcript_dirs may be None, a str, or a list of str.
+    """
     dirs = []
 
     # Chart units (single JSONL file → treat as a dir)
@@ -35,10 +38,18 @@ def collect_unit_dirs(chart_path, transcript_dir=None):
         dirs.append(chart_dir)
         print(f"  Chart units: {chart_dir} ({count_jsonl(chart_dir)} files)")
 
-    # Transcript units
-    if transcript_dir and os.path.exists(transcript_dir):
-        dirs.append(transcript_dir)
-        print(f"  Transcript units: {transcript_dir} ({count_jsonl(transcript_dir)} files)")
+    # Transcript units (one or more dirs)
+    if transcript_dirs is None:
+        transcript_dirs = []
+    elif isinstance(transcript_dirs, str):
+        transcript_dirs = [transcript_dirs]
+
+    for tdir in transcript_dirs:
+        if tdir and os.path.exists(tdir):
+            dirs.append(tdir)
+            print(f"  Transcript units: {tdir} ({count_jsonl(tdir)} files)")
+        elif tdir:
+            print(f"  WARNING: transcript dir not found: {tdir}")
 
     return dirs
 
@@ -49,8 +60,8 @@ def count_jsonl(d):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--transcript-dir", default=DEFAULT_TRANSCRIPT_DIR,
-                    help="directory containing transcript unit JSONL files")
+    ap.add_argument("--transcript-dir", nargs="+", default=[DEFAULT_TRANSCRIPT_DIR],
+                    help="one or more directories containing transcript unit JSONL files")
     ap.add_argument("--chart-units", default=CHART_UNITS,
                     help="path to chart unit JSONL file")
     ap.add_argument("--db", default=UNIFIED_DB,

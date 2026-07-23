@@ -5,90 +5,126 @@ One rule underneath everything: **every source reduces to two primitives** —
 one of those. Provenance (source_type, image_path, source_page, url) is captured
 on every unit so nothing needs re-ingesting later.
 
-Keep ICT sources separate from other domains (GEX/MenthorQ). Do one domain at a
-time, then the report→grow-vocab→recanonicalize pass, so vocabularies don't mix.
+Keep ICT sources separate from other domains (GEX/VP). Do one domain at a time,
+then the report->grow-vocab->recanonicalize pass, so vocabularies don't mix.
+
+See [DESIGN.md](../DESIGN.md) for the full architecture and [README.md](../README.md)
+for command syntax.
+
+---
 
 ## Text sources
 
 **Transcripts (.txt), markdown (.md)** — directly:
 ```
-python -m knowledge_ingest.run --input <dir> --output <out>          # transcripts
-python -m knowledge_ingest.run --input <dir> --output <out> --source-type markdown
+python -m knowledge_ingest.run --input <dir> --output <out> --ict-aware
+python -m knowledge_ingest.run --input <dir> --output <out> --source-type markdown --ict-aware
 ```
 
-**Text PDFs** — extract first, then ingest:
+---
+
+## PDFs — two paths depending on content
+
+### Path A: Chart/image-heavy PDFs (Lumi book, Flux NY Guide, MMXM)
+
+Use when the PDF is mostly chart screenshots, diagrams, or full-page images.
+The PDF pages get rendered to PNG and processed through the v4 chart extraction
+pipeline (VLM interprets each page).
+
 ```
-python -m knowledge_ingest.sources.pdf_extract --in <pdfs> --out <text_out>
-python -m knowledge_ingest.run --input <text_out> --output <out> --source-type pdf
+# 1. Triage: structural analysis + render pages to PNG
+python -m knowledge_ingest.tests.triage_pdf --pdfs <pdfs> --render
+#    -> renders to _triage_renders/*.png
+
+# 2. V4 chart extraction on rendered images (human-in-the-loop)
+python -m knowledge_ingest.tests.run_v4_full --out-dir <out>
+#    -> processes each PNG with gemma4 ICT-aware chart prompt
+
+# 3. Convert to KnowledgeUnit JSONL
+python -m knowledge_ingest.tests.convert_v4_to_units
+#    -> _v4_units/v4_chart_units.jsonl
 ```
 
-## Mixed PDFs (text + charts) and Google Slides
+Triage routes text-dominant pages to the text pipeline for free; only image
+pages need the VLM (expensive). This produced the 818 chart units already in
+the unified LanceDB (Lumi 435pp, Flux 67pp, MMXM, Vinay_Models 119pp, etc.).
 
-Export Google Slides as **PDF** (File → Download → PDF). Then use `--mixed`:
-```
-python -m knowledge_ingest.sources.pdf_extract --in <pdfs> --out <text_out> --mixed
-```
-Per-page routing:
-- text pages → one `.md` per doc (page-tagged) → ingest with `--source-type pdf`
-- image-bearing pages → rasterized to `<text_out>/_chart_images/` → chart-extract
+### Path B: Text-heavy PDFs (Trader Blue Print Series, You Tube notes)
 
-Then:
+Use when the PDF is mostly text/notes. MinerU extracts text + images, then
+the text goes through the ICT-aware text pipeline.
+
 ```
-# text side
-python -m knowledge_ingest.run --input <text_out> --output <out> --source-type pdf
-# image side (the chart pages)
-python -m knowledge_ingest.sources.chart_extract propose --images <text_out>/_chart_images --output <out>
-# ...verify the _review JSONs, then:
+# Single command: MinerU extract + ICT-aware text ingest
+python -m knowledge_ingest.mineru_integration --pdf <path> --text-output <out>
+
+# Batch: all PDFs in a directory
+python -m knowledge_ingest.mineru_integration --pdf-dir <dir> --batch --text-output <out>
+
+# Skip text ingest (only extract + stage images)
+python -m knowledge_ingest.mineru_integration --pdf <path> --no-text
+```
+
+MinerU also extracts embedded images to `_mineru_images/` for optional v4 chart
+processing later. These are NOT auto-extracted (v4 is human-in-the-loop).
+
+**MinerU environment:** `C:\Users\vinay\mineru_venv` (Python 3.12.10, `mineru`
+v3.4.4). The CLI is `mineru.exe`, not the old `magic_pdf`. See
+[HANDOVER.md section 23d](../HANDOVER.md) for details.
+
+### Choosing the right path
+
+- PDF mostly chart screenshots/diagrams -> Path A (triage + render + v4)
+- PDF mostly text/notes -> Path B (MinerU + text ingest)
+- Mixed -> Path A handles both (triage routes text pages to text pipeline,
+  image pages to v4)
+- `pdf_extract.py` (poppler-utils) is broken and superseded by both paths above
+
+---
+
+## Chart/diagram images (standalone .png/.jpg)
+
+Human-in-the-loop: VLM proposes structured setup, you review, then commit.
+```
+# 1. Propose (VLM generates JSON for each image)
+python -m knowledge_ingest.sources.chart_extract propose --images <dir> --output <out>
+
+# 2. Review: edit <out>/_review/*.json, fix sequence/relations, set "status":"approved"
+
+# 3. Commit (validated units -> JSONL)
 python -m knowledge_ingest.sources.chart_extract commit --output <out>
 ```
 
-## Standalone chart / diagram images (annotated setups like LRS, EURUSD)
+---
 
-These encode a METHOD in their structure. VLM proposes a structured setup; YOU
-verify (it's not reliable enough unverified). No prose is produced — you have the
-source image.
-```
-# 1) propose
-python -m knowledge_ingest.sources.chart_extract propose --images <charts> --output <out>
-# 2) edit each <out>/_review/*.json: fix sequence/relations, set "status":"approved"
-# 3) commit approved ones into the units store
-python -m knowledge_ingest.sources.chart_extract commit --output <out>
-```
-Verification is fast: open the image, check the ordered `sequence` and each step's
-`position` (premium/discount) and `range_liquidity` (ERL/IRL). Fix, approve, commit.
-
-## Blogs (MenthorQ etc.)
+## Blogs
 
 ```
-python -m knowledge_ingest.sources.blog_fetch --url-file urls.txt --out <blog_out> --source menthorq
-python -m knowledge_ingest.run --input <blog_out> --output <out> --source-type blog
+python -m knowledge_ingest.sources.blog_fetch --url-file urls.txt --out <blogout> --source <key>
+python -m knowledge_ingest.run --input <blogout> --output <out> --source-type blog --ict-aware
 ```
-Blogs map to their source's vocab DOMAIN (MenthorQ → gex, not ict). Respect
-robots.txt / terms; prefer RSS/API if available.
 
-## Journal (your own trades) — SEPARATE store
+`blog_fetch` downloads in-content images and flags JS-rendered charts it can't
+download (those need manual save-as-PDF -> mixed-PDF path).
 
-A journaled trade chart uses the same vision machinery but writes the JournalEntry
-schema, not the knowledge base:
+---
+
+## After a batch (any source) — grow vocab & build store
+
 ```
-python -m knowledge_ingest.sources.chart_extract propose --images <my_trades> --output <out> --target journal
-# verify, then commit -> writes to <out>/journal/ (not units/)
-python -m knowledge_ingest.sources.chart_extract commit --output <out>
+# 1. Report unmapped concepts -> find vocab gaps
+python -m knowledge_ingest.report_unmapped --units <dir1> <dir2> ... --vocab ict --min-count 5
+
+# 2. Add worthwhile concepts to vocab/ict_vocabulary.py
+
+# 3. Recanonicalize (cheap, idempotent — never re-extract)
+python -m knowledge_ingest.recanonicalize --units <dir1> <dir2> ... --vocab ict
+
+# 4. Merge into unified LanceDB
+python -m knowledge_ingest.merge_knowledge_base --transcript-dir <dir1>\units <dir2>\units ... --db <db_path>
 ```
-The journal is your execution record (entry/exit/outcome/what-I-missed), feeds the
-companion's "how am I actually trading" role — NOT concept knowledge.
 
-## After ingesting a batch (any source)
-
-1. `report_unmapped --units <all dirs> --vocab ict` — see unmapped concepts
-2. grow `ict_vocabulary.py` (your preferred names canonical, variants as aliases)
-3. `recanonicalize --units <all dirs> --vocab ict` — re-map everything
-4. `run --build-vectors --units <all dirs>` — build the queryable store
-
-## Not yet built (deferred by design)
-
-- **Unannotated live-chart derivation** (derive FVG/CISD/MSS from raw candles) —
-  the hard Aspect 3; better done from OHLCV data + your detection code than from
-  pixels. Depends on a mature knowledge base first.
-- **OCR for scanned PDFs / precise level extraction** — pair OCR with the VLM when
-  exact numbers matter (VLMs misread digits). Add when a source needs it.
+**Sequencing rules:** do ONE domain at a time so vocabularies don't mix; keep
+all runs on the SAME vocabulary file; grow vocab once at the end from the full
+corpus; re-canonicalize every time vocab changes; re-EXTRACTION is never
+repeated (expensive), only re-canonicalization.

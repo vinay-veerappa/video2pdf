@@ -25,29 +25,43 @@ MINERU_OUTPUT_BASE = r"C:\ICT_Videos\Testing\_mineru_output"
 # Where to put extracted images for v4 chart extraction
 MINERU_IMAGE_DIR = r"C:\ICT_Videos\Testing\_mineru_images"
 
-# Where to put extracted markdown for text ingestion
+# Where to put extracted markdown for text ingestion (staged as .txt)
 MINERU_TEXT_DIR = r"C:\ICT_Videos\Testing\_mineru_text"
+
+# Where the ingest pipeline writes its output (units/, notes/, etc.)
+MINERU_TEXT_INGEST_DIR = r"C:\ICT_Videos\Testing\_mineru_text_ingest"
 
 
 def check_mineru():
-    """Verify MinerU is installed in the venv."""
+    """Verify MinerU is installed in the venv.
+
+    The package was renamed from `magic_pdf` to `mineru` (v3.x). We check
+    for the `mineru` package and the `mineru.exe` CLI entry point.
+    """
     if not os.path.exists(MINERU_PYTHON):
         print(f"ERROR: MinerU venv not found at {MINERU_VENV}")
         print("Install with: python -m venv C:\\Users\\vinay\\mineru_venv")
-        print("Then: C:\\Users\\vinay\\mineru_venv\\Scripts\\pip install magic-pdf[full]")
+        print("Then: C:\\Users\\vinay\\mineru_venv\\Scripts\\pip install mineru[full]")
         return False
 
-    # Check if magic_pdf is installed
+    # Check if the `mineru` package is installed (was `magic_pdf` in older versions)
     result = subprocess.run(
-        [MINERU_PYTHON, "-c", "import magic_pdf; print(magic_pdf.__version__)"],
+        [MINERU_PYTHON, "-c", "import mineru; print(getattr(mineru, '__version__', 'unknown'))"],
         capture_output=True, text=True, timeout=10
     )
     if result.returncode != 0:
-        print(f"ERROR: magic_pdf not installed in {MINERU_VENV}")
-        print("Install with: C:\\Users\\vinay\\mineru_venv\\Scripts\\pip install magic-pdf[full]")
+        print(f"ERROR: `mineru` package not installed in {MINERU_VENV}")
+        print("Install with: C:\\Users\\vinay\\mineru_venv\\Scripts\\pip install mineru[full]")
         return False
 
-    print(f"MinerU ready: magic_pdf v{result.stdout.strip()}")
+    # Also verify the CLI entry point exists
+    mineru_cli = os.path.join(MINERU_VENV, "Scripts", "mineru.exe")
+    if not os.path.exists(mineru_cli):
+        print(f"ERROR: mineru.exe CLI not found at {mineru_cli}")
+        print("Reinstall with: C:\\Users\\vinay\\mineru_venv\\Scripts\\pip install --force-reinstall mineru[full]")
+        return False
+
+    print(f"MinerU ready: mineru v{result.stdout.strip()} ({mineru_cli})")
     return True
 
 
@@ -64,44 +78,58 @@ def run_mineru(pdf_path, output_dir=None, image_dpi=200):
 
     os.makedirs(output_dir, exist_ok=True)
 
-    # MinerU CLI: magic-pdf -p <pdf> -o <output> -m auto
+    # MinerU CLI (v3.x): mineru.exe -p <pdf> -o <output> -m auto -b hybrid-engine
+    # The package was renamed from magic_pdf to mineru; the CLI entry point is mineru.exe
+    mineru_cli = os.path.join(MINERU_VENV, "Scripts", "mineru.exe")
     cmd = [
-        MINERU_PYTHON, "-m", "magic_pdf.cli",
+        mineru_cli,
         "-p", pdf_path,
         "-o", output_dir,
-        "-m", "auto",  # auto mode (OCR + text)
+        "-m", "auto",        # auto mode (OCR + text) -- handles mixed PDFs
+        "-b", "hybrid-engine", # backend that produces hybrid_auto/ output
     ]
 
     print(f"Running MinerU on: {pdf_path}")
     print(f"  Output: {output_dir}")
 
     start = time.time()
-    result = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
+    result = subprocess.run(cmd, capture_output=True, text=True, timeout=600)
     elapsed = time.time() - start
 
     if result.returncode != 0:
         print(f"  FAILED ({elapsed:.1f}s)")
         if result.stderr:
             print(f"  stderr: {result.stderr[:500]}")
+        if result.stdout:
+            print(f"  stdout: {result.stdout[:500]}")
         return None, None
 
     print(f"  Done ({elapsed:.1f}s)")
 
-    # Find the output markdown and images
-    # MinerU creates: <output>/<name>/auto/<name>.md and images in <output>/<name>/auto/images/
-    auto_dir = os.path.join(output_dir, pdf_name, "auto")
+    # Find the output markdown and images.
+    # hybrid-engine backend creates: <output>/<name>/hybrid_auto/<name>.md
+    #                         images in <output>/<name>/hybrid_auto/images/
+    # (Older pipeline backend created <output>/<name>/auto/ -- we glob as fallback.)
+    auto_dir = os.path.join(output_dir, pdf_name, "hybrid_auto")
     md_path = os.path.join(auto_dir, f"{pdf_name}.md")
     images_dir = os.path.join(auto_dir, "images")
 
     if not os.path.exists(md_path):
-        # Try alternative layout
-        md_files = glob.glob(os.path.join(output_dir, "**", "*.md"), recursive=True)
-        if md_files:
-            md_path = md_files[0]
-            images_dir = os.path.join(os.path.dirname(md_path), "images")
+        # Try older "auto" layout, then glob recursively for any .md
+        auto_dir_old = os.path.join(output_dir, pdf_name, "auto")
+        md_path_old = os.path.join(auto_dir_old, f"{pdf_name}.md")
+        if os.path.exists(md_path_old):
+            md_path = md_path_old
+            images_dir = os.path.join(auto_dir_old, "images")
         else:
-            print(f"  WARNING: no markdown found in {output_dir}")
-            return None, None
+            # Last resort: glob recursively
+            md_files = glob.glob(os.path.join(output_dir, "**", "*.md"), recursive=True)
+            if md_files:
+                md_path = md_files[0]
+                images_dir = os.path.join(os.path.dirname(md_path), "images")
+            else:
+                print(f"  WARNING: no markdown found in {output_dir}")
+                return None, None
 
     return md_path, images_dir
 
@@ -118,19 +146,64 @@ def collect_images_for_v4(images_dir, dest_dir, pdf_name):
 
 
 def collect_text_for_ingest(md_path, dest_dir, pdf_name):
-    """Copy markdown to a flat dir for text ingestion."""
+    """Copy markdown to a flat dir for text ingestion.
+
+    The ingest pipeline expects .txt files; MinerU produces .md.
+    We copy the .md to a .txt so the pipeline picks it up.
+    """
     os.makedirs(dest_dir, exist_ok=True)
-    # Convert .md to .txt for the ingest pipeline (it expects .txt)
     dest = os.path.join(dest_dir, f"{pdf_name}.txt")
     shutil.copy2(md_path, dest)
     return dest
 
 
-def process_pdf(pdf_path, run_v4=False, run_text=False):
-    """Full pipeline: MinerU extract → route images/text."""
+def _run_text_ingest(text_dir, output_dir, file_filter=None, ict_aware=True):
+    """Actually execute the ICT-aware text ingest via IngestPipeline.
+
+    Called from process_pdf() when run_text=True. Uses the same IngestPipeline
+    that run.py uses, but invoked directly (no subprocess) to avoid venv issues.
+
+    Args:
+        ict_aware: if True (default), use ICT-aware prompts (embeds ICT domain
+            knowledge into classify/extract). If False, use generic prompts.
+    """
+    from knowledge_ingest.config.config import PipelineConfig
+    from knowledge_ingest.pipeline.ingest import IngestPipeline
+
+    cfg = PipelineConfig()
+    cfg.input_dir = text_dir
+    cfg.output_dir = output_dir
+    cfg.source_type = "pdf"
+    cfg.ict_aware = ict_aware
+    cfg.skip_existing = False
+    if file_filter:
+        cfg.file_filter = file_filter
+
+    mode = "ict-aware" if ict_aware else "generic"
+    print(f"  Ingesting text from {text_dir} -> {output_dir} ({mode})")
+    pipeline = IngestPipeline(cfg)
+    pipeline.run()
+    units_dir = os.path.join(output_dir, "units")
+    n_units = len(glob.glob(os.path.join(units_dir, "*.jsonl")))
+    print(f"  Text ingest complete: {n_units} unit files in {units_dir}")
+    return units_dir
+
+
+def process_pdf(pdf_path, run_v4=False, run_text=False,
+                text_output_dir=None, text_input_dir=None, ict_aware=True):
+    """Full pipeline: MinerU extract -> route images/text.
+
+    Args:
+        pdf_path: path to the PDF file.
+        run_v4: if True, print the v4 chart extraction command for images.
+        run_text: if True, actually execute the text ingest (not just print it).
+        text_output_dir: where to write ingest output (default: MINERU_TEXT_INGEST_DIR).
+        text_input_dir: where to stage .txt files for ingest (default: MINERU_TEXT_DIR).
+        ict_aware: if True (default), use ICT-aware prompts for text ingest.
+    """
     md_path, images_dir = run_mineru(pdf_path)
     if not md_path:
-        return
+        return None
 
     pdf_name = Path(pdf_path).stem
     n_images = 0
@@ -140,23 +213,26 @@ def process_pdf(pdf_path, run_v4=False, run_text=False):
         n_images = collect_images_for_v4(images_dir, MINERU_IMAGE_DIR, pdf_name)
         print(f"  Collected {n_images} images → {MINERU_IMAGE_DIR}")
 
-    text_path = collect_text_for_ingest(md_path, MINERU_TEXT_DIR, pdf_name)
-    print(f"  Text → {text_path}")
+    stage_dir = text_input_dir or MINERU_TEXT_DIR
+    text_path = collect_text_for_ingest(md_path, stage_dir, pdf_name)
+    print(f"  Text staged → {text_path}")
 
     if run_v4 and n_images > 0:
-        print(f"\nTo extract chart knowledge from {n_images} images, run:")
-        print(f'  python -m knowledge_ingest.tests.run_v4_full '
+        print(f"\n  To extract chart knowledge from {n_images} images, run:")
+        print(f'    python -m knowledge_ingest.tests.run_v4_full '
               f'--out-dir "C:\\ICT_Videos\\Testing\\_mineru_v4" '
               f'--filter "{pdf_name}_*"')
 
     if run_text and text_path:
-        print(f"\nTo ingest text knowledge, run:")
-        print(f'  python -m knowledge_ingest.run '
-              f'--input "{MINERU_TEXT_DIR}" '
-              f'--output "C:\\ICT_Videos\\Testing\\_mineru_text_ingest" '
-              f'--file-filter "{pdf_name}.txt" --ict-aware --no-skip')
+        out_dir = text_output_dir or MINERU_TEXT_INGEST_DIR
+        units_dir = _run_text_ingest(stage_dir, out_dir,
+                                    file_filter=f"{pdf_name}.txt",
+                                    ict_aware=ict_aware)
+        return {"pdf": pdf_path, "markdown": md_path, "images": n_images,
+                "text": text_path, "units_dir": units_dir}
 
-    return {"pdf": pdf_path, "markdown": md_path, "images": n_images, "text": text_path}
+    return {"pdf": pdf_path, "markdown": md_path, "images": n_images,
+            "text": text_path}
 
 
 def main():
@@ -165,7 +241,16 @@ def main():
     ap.add_argument("--pdf-dir", help="directory of PDFs to batch process")
     ap.add_argument("--batch", action="store_true", help="batch mode for --pdf-dir")
     ap.add_argument("--run-v4", action="store_true", help="print v4 chart extraction command")
-    manual = ap.add_argument("--run-text", action="store_true", help="print text ingest command")
+    ap.add_argument("--run-text", action="store_true", default=True,
+                    help="execute ICT-aware text ingest after MinerU extraction (default: True)")
+    ap.add_argument("--no-text", action="store_true",
+                    help="skip text ingest (only do MinerU extraction + image routing)")
+    ap.add_argument("--text-output", default=None,
+                    help="override text ingest output dir (default: _mineru_text_ingest)")
+    ap.add_argument("--ict-aware", action="store_true", default=True,
+                    help="use ICT-aware prompts for text ingest (default: True)")
+    ap.add_argument("--no-ict-aware", action="store_false", dest="ict_aware",
+                    help="use generic (domain-agnostic) prompts instead of ICT-aware")
     ap.add_argument("--check", action="store_true", help="just check MinerU installation")
     args = ap.parse_args()
 
@@ -176,10 +261,15 @@ def main():
     if not check_mineru():
         return
 
+    run_text = args.run_text and not args.no_text
+    text_output = args.text_output or MINERU_TEXT_INGEST_DIR
+    ict_aware = args.ict_aware
+
     results = []
 
     if args.pdf:
-        r = process_pdf(args.pdf, run_v4=args.run_v4, run_text=args.run_text)
+        r = process_pdf(args.pdf, run_v4=args.run_v4, run_text=run_text,
+                        text_output_dir=text_output, ict_aware=ict_aware)
         if r:
             results.append(r)
 
@@ -187,7 +277,8 @@ def main():
         pdfs = sorted(glob.glob(os.path.join(args.pdf_dir, "*.pdf")))
         print(f"\nFound {len(pdfs)} PDFs in {args.pdf_dir}")
         for pdf in pdfs:
-            r = process_pdf(pdf, run_v4=args.run_v4, run_text=args.run_text)
+            r = process_pdf(pdf, run_v4=args.run_v4, run_text=run_text,
+                            text_output_dir=text_output, ict_aware=ict_aware)
             if r:
                 results.append(r)
             print()
