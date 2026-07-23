@@ -1335,4 +1335,55 @@ Document map (from DESIGN.md header):
 | README.md | How to run (commands) |
 | INPUTS.md | How to feed sources (routing) |
 | HANDOVER.md | Session state log |
-| VOCABULARY_REVIEW.md | Vocab decisions |
+| VOCABULARY_REVIEW.md | Vocab decisions |### 23i. Phase 1 foundation fixes — DONE (2026-07-23)
+
+Phase 1 from the DESIGN.md roadmap is complete and committed (eff53f1):
+
+1. **source_type column in LanceDB** — added to vector_store.py build_lancedb()
+   records + source_type filter in search(). Verified: transcript(3327),
+   diagram(811), pdf(23), chart(7). Queries can now filter by origin.
+
+2. **serve.py default DB** — changed from _v4_lancedb (chart-only) to
+   unified_knowledge.lancedb (all 4168 units).
+
+3. **domains field in schema** — added to KnowledgeMetadata (default ["ict"]).
+   Allows tagging units by domain; confluence units can be ["ict","gex"].
+
+4. **--ict-aware/--no-ict-aware flag** — added to mineru_integration.py so the
+   prompt choice is explicit (was hardcoded True).
+
+Tests: 8 regression tests pass + 5 Phase 1 verification tests pass.
+
+### 23j. CHECKPOINT — session end state (2026-07-23)
+
+**Git state:** committed and pushed to GitHub (origin/main at eff53f1)
+- 8b93e80: DESIGN.md + MinerU fix + doc sync
+- eff53f1: Phase 1 foundation fixes
+
+**Knowledge base:**
+- DB: C:\ICT_Videos\Testing\unified_knowledge.lancedb
+- 4,168 units (818 chart + 3,327 transcript + 23 PDF)
+- source_type column populated and verified
+- domains field in schema (default ["ict"])
+
+**Documentation (all in sync):**
+- DESIGN.md — architecture, goals, roadmap (read first for next session)
+- README.md — commands (MinerU, ICT-aware, two PDF paths, query)
+- INPUTS.md — source routing (MinerU + triage, removed broken refs)
+- HANDOVER.md — this file (session log through section 23)
+
+**Code changes committed:**
+- mineru_integration.py — 5 bugs fixed (magic_pdf->mineru, CLI->mineru.exe,
+  auto->hybrid_auto, execute text ingest, --ict-aware flag)
+- merge_knowledge_base.py — multiple --transcript-dir dirs (nargs="+")
+- vector_store.py — source_type column + filter
+- serve.py — default DB -> unified_knowledge.lancedb
+- schema/models.py — domains field in KnowledgeMetadata
+
+**Next session should start with:**
+1. Read DESIGN.md section 9 (roadmap) — Phase 2 is next
+2. Phase 2: prompt profile registry (domains/registry.py + --profile ict+gex)
+3. Then Phase 3: strategy candidate registry (KB setups -> executable candidates)
+
+**MinerU reminder:** lives in C:\Users\vinay\mineru_venv (Python 3.12.10,
+mineru v3.4.4). CLI is mineru.exe, NOT the old magic_pdf. See HANDOVER section 23d.
